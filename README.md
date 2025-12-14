@@ -25,7 +25,7 @@ A Text-Based Multiplayer Reality Simulation Game
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/pearl-100/undefined.git
+git clone https://github.com/pearl-100/undefined-public.git
 cd undefined
 ```
 
