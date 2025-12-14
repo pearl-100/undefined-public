@@ -112,13 +112,17 @@ undefined/
 
 ## ⚙️ Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SERVER_API_KEY` | Server API key for free users | (none) |
-| `SERVER_DEFAULT_MODEL` | Default AI model | `gemini-2.5-flash` |
-| `GIT_AUTO_PUSH` | Auto backup Git push at midnight | `false` |
-| `ADMIN_UUIDS` | Admin UUIDs (comma separated) | (none) |
-| `BMC_WEBHOOK_SECRET` | Buy Me a Coffee webhook secret | (none) |
+These values are read from your `.env` file via `python-dotenv` (see `env.example`).
+
+> Note: `SERVER_DEFAULT_MODEL` is used **only for Free/Guest mode** (when the client does not provide an API key and the server falls back to `SERVER_API_KEY`).
+
+| Variable | Description | Code default (if unset) | Recommended (env.example / Quick Start) |
+|----------|-------------|--------------------------|------------------------------------------|
+| `SERVER_API_KEY` | Server API key for free/guest users | (empty) | `your-api-key-here` |
+| `SERVER_DEFAULT_MODEL` | Default AI model for free/guest users | `gemini-2.5-flash` | `groq/llama-3.3-70b-versatile` |
+| `GIT_AUTO_PUSH` | Auto backup Git push at midnight | `false` | `false` |
+| `ADMIN_UUIDS` | Admin UUIDs (comma separated) | (empty) | (empty) |
+| `BMC_WEBHOOK_SECRET` | Buy Me a Coffee webhook secret | (empty) | (empty) |
 
 ---
 
@@ -144,13 +148,13 @@ Existing `world_data.json` users will be automatically migrated to SQLite on ser
 1. Server starts
 2. Detects `world_data.json`
 3. Migrates data to SQLite DB
-4. Moves original file to `backup/` folder
+4. Moves original file to `backups/` folder
 
 ---
 
 ## 💾 Backup System
 
-- **Auto Backup**: Daily at midnight, DB → JSON export (`backup/world_data_date.json`)
+- **Auto Backup**: Daily at midnight, DB → JSON export (`backups/world_data_date.json`)
 - **Git Integration**: Auto commit & push when `GIT_AUTO_PUSH=true`
 
 ---
