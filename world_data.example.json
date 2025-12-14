@@ -1,5 +1,5 @@
 {
-  "_README": "이 파일을 world_data.json으로 복사하면 초기 데이터가 로드됩니다.",
+  "_README": "Copying this file to world_data.json loads the initial data.",
   "objects": {
     "genesis_monolith": {
       "id": "genesis_monolith",
