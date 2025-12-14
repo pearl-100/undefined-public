@@ -1,29 +1,418 @@
 {
-  "_README": "Copying this file to world_data.json loads the initial data.",
+  "_README": "Seed world data for first-time setup. Copy this file to world_data.json; on first startup it will be migrated into SQLite (world.db). This file intentionally excludes private data such as users/supporters/history logs.",
   "objects": {
     "genesis_monolith": {
       "id": "genesis_monolith",
       "name": "Genesis Monolith",
       "position": [0, 0, 0],
-      "description": "A towering black monolith standing amidst mountains of garbage. 'Hello, World!' is inscribed on its surface.",
+      "description": "A towering black monolith standing amidst mountains of garbage. 'Hello, World!' is inscribed on its surface in an unknowable manner. No matter how hard you hit or scratch it, it remains completely undamaged.",
       "indestructible": true,
       "properties": {
         "material": "unknown",
         "age": "immeasurable"
       }
+    },
+    "junkyard_processing_plant": {
+      "id": "junkyard_processing_plant",
+      "name": "Junkyard Processing Plant",
+      "position": [2, 1, 0],
+      "description": "A massive rusted and abandoned industrial facility. The conveyor belts are still, and the crushers are covered in dust. Occasional creaking metal sounds echo through.",
+      "indestructible": false,
+      "properties": {
+        "material": "steel",
+        "condition": "abandoned",
+        "contains_salvage": true
+      }
+    },
+    "rusty_pipe": {
+      "id": "rusty_pipe",
+      "name": "Rusty Pipe",
+      "position": [0, 1, 0],
+      "description": "An arm-thick rusty iron pipe. One end is sharply broken off, making it potentially usable as a weapon.",
+      "indestructible": false,
+      "properties": {
+        "material": "iron",
+        "weight": "2kg",
+        "usable_as": "weapon",
+        "condition": "rusty"
+      }
+    },
+    "contaminated_puddle": {
+      "id": "contaminated_puddle",
+      "name": "Contaminated Water Puddle",
+      "position": [-1, 0, 0],
+      "description": "Stagnant water with an iridescent oil film floating on top. It reeks horribly. Drinking it would be dangerous, but when you're thirsty, it might look tempting.",
+      "indestructible": false,
+      "properties": {
+        "material": "water",
+        "contaminated": true,
+        "drinkable": false
+      }
+    },
+    "unknown_seeds": {
+      "id": "unknown_seeds",
+      "name": "Unknown Seeds",
+      "position": [1, -1, 0],
+      "description": "A small cluster of seeds wrapped in a translucent membrane. Found among the garbage heaps. What grows from them, only planting will reveal.",
+      "indestructible": false,
+      "properties": {
+        "material": "organic",
+        "plantable": true,
+        "origin": "unknown"
+      }
+    },
+    "broken_drone": {
+      "id": "broken_drone",
+      "name": "Broken Drone",
+      "position": [-2, 1, 0],
+      "description": "A small drone wreckage with broken propellers and exposed circuit boards. A faded logo suggests it came from SANCTUS. Parts could be salvaged.",
+      "indestructible": false,
+      "properties": {
+        "material": "electronics",
+        "condition": "broken",
+        "salvageable": true,
+        "origin": "SANCTUS"
+      }
+    },
+    "torn_tarpaulin": {
+      "id": "torn_tarpaulin",
+      "name": "Torn Tarpaulin",
+      "position": [0, -2, 0],
+      "description": "An old tarpaulin riddled with holes. Could be used to build a makeshift shelter or to stay dry from rain.",
+      "indestructible": false,
+      "properties": {
+        "material": "synthetic",
+        "condition": "torn",
+        "usable_as": "shelter_material"
+      }
+    },
+    "scrap_heap": {
+      "id": "scrap_heap",
+      "name": "Scrap Heap",
+      "position": [1, 2, 0],
+      "description": "A heap of rusted and crushed metal scraps piled high. Could be melted for recycling, or used as raw material for crude tools.",
+      "indestructible": false,
+      "properties": {
+        "material": "mixed_metal",
+        "count": "many",
+        "recyclable": true
+      }
+    },
+    "cracked_solar_panel": {
+      "id": "cracked_solar_panel",
+      "name": "Cracked Solar Panel",
+      "position": [-1, -2, 0],
+      "description": "A solar panel with glass cracked in a spider-web pattern. Efficiency would be reduced, but it might still work.",
+      "indestructible": false,
+      "properties": {
+        "material": "silicon_glass",
+        "condition": "cracked",
+        "functional": "partial",
+        "technology": "photovoltaic"
+      }
+    },
+    "old_mattress": {
+      "id": "old_mattress",
+      "name": "Old Mattress",
+      "position": [3, 0, 0],
+      "description": "A worn-out mattress with springs poking through. It smells terrible, but it's better than sleeping on bare ground.",
+      "indestructible": false,
+      "properties": {
+        "material": "fabric_metal",
+        "condition": "worn",
+        "usable_as": "bedding"
+      }
+    },
+    "rough_stone": {
+      "id": "rough_stone",
+      "name": "Rough Stone",
+      "position": [-2, -1, 0],
+      "description": "A jagged, uncut stone with sharp edges. Could be used as a primitive tool or thrown as a weapon.",
+      "indestructible": false,
+      "properties": {
+        "material": "stone",
+        "weight": "1kg",
+        "usable_as": "tool_primitive"
+      }
+    },
+    "dry_weeds": {
+      "id": "dry_weeds",
+      "name": "Dry Weeds",
+      "position": [2, -1, 0],
+      "description": "A clump of dried wild grass and weeds. Useful for starting fires or crafting crude rope.",
+      "indestructible": false,
+      "properties": {
+        "material": "organic",
+        "flammable": true,
+        "usable_as": "tinder"
+      },
+      "state": "consumed"
+    },
+    "loose_stones_pile_1": {
+      "id": "loose_stones_pile_1",
+      "name": "Pile of Loose Stones",
+      "position": [1, 0, 0],
+      "description": "A small mound of various sized stones, easily picked up by hand. Some are sharp, others smooth.",
+      "properties": {
+        "material": "stone",
+        "weight": "variable",
+        "gatherable": true,
+        "count": "many"
+      }
+    },
+    "useful_scrap_pile_1": {
+      "id": "useful_scrap_pile_1",
+      "name": "Pile of Useful Scrap Metal",
+      "position": [-1, 0, 0],
+      "description": "Assorted pieces of rusted and bent metal, small enough to be handled. Some edges are sharp, but many pieces could be repurposed.",
+      "properties": {
+        "material": "mixed_metal",
+        "weight": "variable",
+        "gatherable": true,
+        "count": "many"
+      }
+    },
+    "welcome_sign_0_0": {
+      "id": "welcome_sign_0_0",
+      "name": "Welcome! Message",
+      "position": [0, 0, 0],
+      "description": "The word 'Welcome!' spelled out on the ground using loose stones, broken branches, and scrap metal, now followed by '- admin'. It's a crude but clear invitation amidst the junkyard.",
+      "properties": {
+        "material": "mixed_junk",
+        "condition": "stable",
+        "visible": true,
+        "message": "Welcome! - admin"
+      }
+    },
+    "chemical_experiment_kit_2": {
+      "id": "chemical_experiment_kit_2",
+      "name": "Chemical Experiment Kit",
+      "position": [0, 0, -2],
+      "description": "A sealed, sturdy kit containing small portions of charcoal, sulfur, and saltpeter, along with basic mixing tools. It appears to have been deliberately hidden.",
+      "properties": {
+        "contents": []
+      }
+    },
+    "massive_scrap_heap_0_1": {
+      "id": "massive_scrap_heap_0_1",
+      "name": "Massive Scrap Heap",
+      "position": [0, 1, 0],
+      "description": "A colossal pile of trash from the city, rising like a jagged mountain of discarded urban refuse. It appears to offer an infinite supply of 'Scrap Metal', 'Wires', and 'Plastic shards' to those willing to search.",
+      "properties": {
+        "material": "mixed_city_refuse",
+        "searchable_for": [
+          "Scrap Metal",
+          "Wires",
+          "Plastic shards"
+        ],
+        "infinite_resource": true,
+        "condition": "weathered_but_stable"
+      }
+    },
+    "glitchy_food_dispenser_2_0_0": {
+      "id": "glitchy_food_dispenser_2_0_0",
+      "name": "Glitchy Food Dispenser",
+      "position": [2, 0, 0],
+      "description": "A bulky, metallic food dispenser. It sparks and looks heavily damaged, with internal mechanisms exposed. A faint hum emanates from it, despite its broken appearance. If kicked or hit, it might dispense a 'Synthetic Nutrient Bar'.",
+      "properties": {
+        "material": "mixed_metal_electronics",
+        "condition": "glitchy_broken",
+        "functionality": "partial",
+        "interactive_action": "kick/hit",
+        "dispenses": "Synthetic Nutrient Bar"
+      }
+    },
+    "rusty_metal_signpost_0_3_0": {
+      "id": "rusty_metal_signpost_0_3_0",
+      "name": "Rusty Metal Signpost",
+      "position": [0, 3, 0],
+      "description": "A tall, rusty metal signpost. Faded red paint boldly declares: 'NORTH: Sanctum City (Citizens Only) / SOUTH: The Wasteland'.",
+      "properties": {
+        "material": "iron_steel",
+        "condition": "rusty",
+        "message": "NORTH: Sanctum City (Citizens Only) / SOUTH: The Wasteland"
+      }
+    },
+    "sealed_alloy_box_0_minus2_0": {
+      "id": "sealed_alloy_box_0_minus2_0",
+      "name": "Sealed Alloy Box",
+      "position": [0, -2, 0],
+      "description": "A heavy, seamless alloy box. Its surface is impossibly smooth, devoid of hinges, seams, or keyholes. It radiates an inert, unyielding presence, hinting at a material of extreme durability. It forces users to invent explosives or heavy tools to open it.",
+      "properties": {
+        "material": "unknown_alloy",
+        "hardness": "impossibly_hard",
+        "openable_by": "explosives_or_heavy_tools",
+        "condition": "pristine"
+      },
+      "category": "misc"
+    },
+    "large_fire_1": {
+      "id": "large_fire_1",
+      "name": "Large Fire",
+      "position": [0, 0, -2],
+      "description": "A large, crackling fire burns, casting bright light and significant warmth. It consumes fuel rapidly.",
+      "properties": {
+        "state": "burning",
+        "fuel": "dry_weeds, scrap_metal",
+        "heat_source": true,
+        "light_source": true
+      }
+    },
+    "makeshift_torch_1": {
+      "id": "makeshift_torch_1",
+      "name": "Makeshift Torch",
+      "position": [0, 0, -2],
+      "description": "A dry branch, ignited at one end. It provides a flickering light source and casts dancing shadows.",
+      "properties": {
+        "material": "wood",
+        "state": "burning",
+        "light_source": true,
+        "duration": "limited"
+      }
     }
   },
   "materials": {
-    "_README": {"description": "Discovered materials stored here", "total_discoveries": 0}
+    "_README": {
+      "description": "This registry records materials invented by users. 'natural' types are natural substances, 'invented' types are user inventions.",
+      "total_discoveries": 1
+    },
+    "gunpowder_material": {
+      "id": "gunpowder_material",
+      "name": "Gunpowder",
+      "name_en": "Gunpowder",
+      "type": "invented",
+      "creator": "undefined",
+      "created_at": "2025-12-10T07:57:21.872512",
+      "recipe": "Charcoal, Sulfur, Saltpeter (mixed in specific ratios)",
+      "description": "A fine, dark, granular explosive mixture, highly unstable and flammable.",
+      "properties": {
+        "hardness": "1",
+        "density": "variable",
+        "melting_point": "decomposes before melting",
+        "flammable": true,
+        "explosive": true,
+        "stability": "low"
+      }
+    }
   },
   "object_types": {
-    "_README": {"description": "User-created object blueprints registry", "total_blueprints": 0}
+    "_README": {
+      "description": "User-created object blueprints registry. Once registered, anyone can craft these items.",
+      "total_blueprints": 2
+    },
+    "synthetic_nutrient_bar": {
+      "id": "synthetic_nutrient_bar",
+      "name": "Synthetic Nutrient Bar",
+      "name_en": "Synthetic Nutrient Bar",
+      "category": "consumable",
+      "creator": "undefined",
+      "created_at": "2025-12-10T08:48:00.622530",
+      "base_materials": [
+        "processed_nutrients",
+        "synthetic_binders"
+      ],
+      "description": "",
+      "properties": {
+        "durability": "1",
+        "weight": "0.1kg",
+        "nourishment": "moderate",
+        "hydration": "low",
+        "description": "A compact, grey bar of highly processed nutrients, designed to provide sustenance in extreme conditions."
+      }
+    },
+    "makeshift_torch": {
+      "id": "makeshift_torch",
+      "name": "Makeshift Torch",
+      "name_en": "Makeshift Torch",
+      "category": "tool",
+      "creator": "undefined",
+      "created_at": "2025-12-12T09:21:57.584476",
+      "base_materials": [
+        "wood",
+        "fire"
+      ],
+      "description": "",
+      "properties": {
+        "durability": 10,
+        "weight": 0.5
+      }
+    }
   },
   "natural_elements": {
-    "iron": {"name": "Iron", "type": "metal", "hardness": 4, "density": 7.87, "melting_point": 1538},
-    "copper": {"name": "Copper", "type": "metal", "hardness": 3, "density": 8.96, "melting_point": 1085},
-    "wood": {"name": "Wood", "type": "organic", "hardness": 2, "density": 0.6, "flammable": true},
-    "water": {"name": "Water", "type": "compound", "hardness": 0, "density": 1.0, "boiling_point": 100}
+    "iron": {
+      "name": "Iron",
+      "type": "metal",
+      "hardness": 4,
+      "density": 7.87,
+      "melting_point": 1538
+    },
+    "copper": {
+      "name": "Copper",
+      "type": "metal",
+      "hardness": 3,
+      "density": 8.96,
+      "melting_point": 1085
+    },
+    "tin": {
+      "name": "Tin",
+      "type": "metal",
+      "hardness": 1.5,
+      "density": 7.31,
+      "melting_point": 232
+    },
+    "carbon": {
+      "name": "Carbon",
+      "type": "nonmetal",
+      "hardness": 0.5,
+      "density": 2.26
+    },
+    "silicon": {
+      "name": "Silicon",
+      "type": "metalloid",
+      "hardness": 6.5,
+      "density": 2.33,
+      "melting_point": 1414
+    },
+    "sulfur": {
+      "name": "Sulfur",
+      "type": "nonmetal",
+      "hardness": 2,
+      "density": 2.07,
+      "melting_point": 115
+    },
+    "water": {
+      "name": "Water",
+      "type": "compound",
+      "hardness": 0,
+      "density": 1.0,
+      "boiling_point": 100
+    },
+    "sand": {
+      "name": "Sand",
+      "type": "mineral",
+      "hardness": 7,
+      "density": 1.5,
+      "melting_point": 1700
+    },
+    "clay": {
+      "name": "Clay",
+      "type": "mineral",
+      "hardness": 1,
+      "density": 1.8
+    },
+    "wood": {
+      "name": "Wood",
+      "type": "organic",
+      "hardness": 2,
+      "density": 0.6,
+      "flammable": true
+    },
+    "oil": {
+      "name": "Oil",
+      "type": "organic",
+      "density": 0.87,
+      "flammable": true
+    }
   },
   "biomes_discovered": {},
   "history": [],

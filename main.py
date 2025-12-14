@@ -1759,7 +1759,7 @@ async def get_supporters():
 
 @app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
-    global world_data
+    global world_data, db_instance
     
     # users 딕셔너리가 없으면 생성
     if "users" not in world_data:
@@ -1961,7 +1961,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
 
 async def handle_command(client_id: str, command: str, api_key: str, model: str = "gpt-4o", user_id: str = None):
     """명령어 처리"""
-    global world_data
+    global world_data, db_instance
     
     parts = command.strip().split(" ", 1)
     cmd = parts[0].lower()
@@ -3205,7 +3205,7 @@ async def translate_to_english(text: str, api_key: str, model: str = "gpt-4o") -
 
 async def process_action(client_id: str, action: str, api_key: str, model: str = "gpt-4o", is_guest: bool = False):
     """AI를 통한 행동 판정"""
-    global world_data
+    global world_data, db_instance
     
     # Guest 태그
     display_name = f"[Guest] {client_id}" if is_guest else client_id
