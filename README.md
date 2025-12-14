@@ -50,6 +50,7 @@ GIT_AUTO_PUSH=false
 # To start with example data:
 cp world_data.example.json world_data.json
 ```
+On first startup, `world_data.json` (if present) will be automatically migrated into the SQLite database (`world.db`).
 
 ### 5. Run the Server
 ```bash
