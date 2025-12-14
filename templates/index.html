@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>undefined - Adaptive Reality</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --bg-color: #0a0a0a;
+            --text-color: #e0e0e0;
+            --system-color: #00cc66;
+            --error-color: #ff4444;
+            --action-color: #44aaff;
+            --narrative-color: #cccccc;
+            --dim-color: #555555;
+            --input-bg: #111111;
+            --hud-bg: rgba(0, 0, 0, 0.85);
+        }
+        
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+        
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+            user-select: text;
+        }
+        
+        /* === HUD (Top Fixed Bar) === */
+        #hud {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 36px;
+            background: var(--hud-bg);
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            z-index: 1000;
+            font-size: 13px;
+        }
+        
+        #hud-location {
+            color: var(--system-color);
+        }
+        
+        #hud-time {
+            color: var(--action-color);
+        }
+        
+        #hud-status {
+            color: var(--dim-color);
+            font-size: 11px;
+        }
+        
+        /* === Main Container === */
+        #container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            padding: 50px 20px 20px 20px;
+        }
+        
+        /* === Log Area === */
+        #log-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            margin-bottom: 10px;
+            background: transparent;
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+            user-select: text;
+            cursor: text;
+        }
+        
+        #log-container::-webkit-scrollbar {
+            width: 4px;
+        }
+        
+        #log-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        #log-container::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 2px;
+        }
+        
+        .log-entry {
+            margin-bottom: 12px;
+            padding: 8px 0;
+            border-bottom: 1px solid #1a1a1a;
+            animation: fadeIn 0.3s ease;
+            transition: opacity 0.5s ease;
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+            user-select: text;
+        }
+        
+        /* Fade effect - Old logs */
+        .log-entry.fading {
+            opacity: 0.4;
+        }
+        
+        .log-entry.very-old {
+            opacity: 0.2;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .log-entry.system { color: var(--system-color); }
+        .log-entry.error { color: var(--error-color); }
+        .log-entry.narrative { color: var(--narrative-color); white-space: pre-wrap; }
+        .log-entry.action { color: var(--action-color); }
+        .log-entry.chat { color: #ffcc00; }
+        .log-entry.death { color: #ff0000; font-weight: bold; }
+        
+        /* Supporter (Gold) username styling */
+        .supporter-name { color: #FFD700 !important; font-weight: bold; }
+        .log-entry.chat.supporter .chat-sender { color: #FFD700; }
+        .supporter-badge { color: #FFD700; margin-left: 3px; }
+        .log-entry.you_died { 
+            color: #ff0000; 
+            font-weight: bold; 
+            background: rgba(100, 0, 0, 0.3);
+            padding: 15px;
+            border: 1px solid #ff0000;
+            white-space: pre-wrap;
+            font-size: 12px;
+        }
+        .log-entry.respawn { 
+            color: #00ff00; 
+            font-weight: bold;
+            background: rgba(0, 100, 0, 0.2);
+            padding: 15px;
+            border: 1px solid #00ff00;
+            white-space: pre-wrap;
+        }
+        
+        .log-entry.discovery {
+            color: #ffcc00;
+            font-weight: bold;
+            background: linear-gradient(135deg, rgba(255, 200, 0, 0.15), rgba(255, 150, 0, 0.1));
+            padding: 15px;
+            border: 2px solid #ffcc00;
+            border-radius: 8px;
+            text-align: center;
+            animation: discoveryGlow 2s ease-in-out;
+        }
+        
+        @keyframes discoveryGlow {
+            0% { box-shadow: 0 0 5px #ffcc00; }
+            50% { box-shadow: 0 0 25px #ffcc00, 0 0 50px #ff8800; }
+            100% { box-shadow: 0 0 5px #ffcc00; }
+        }
+        
+        .log-entry.blueprint {
+            color: #00ccff;
+            font-weight: bold;
+            background: linear-gradient(135deg, rgba(0, 200, 255, 0.15), rgba(0, 150, 255, 0.1));
+            padding: 15px;
+            border: 2px solid #00ccff;
+            border-radius: 8px;
+            text-align: center;
+            animation: blueprintGlow 2s ease-in-out;
+        }
+        
+        @keyframes blueprintGlow {
+            0% { box-shadow: 0 0 5px #00ccff; }
+            50% { box-shadow: 0 0 25px #00ccff, 0 0 50px #0088ff; }
+            100% { box-shadow: 0 0 5px #00ccff; }
+        }
+        
+        .timestamp {
+            color: var(--dim-color);
+            font-size: 10px;
+            margin-right: 8px;
+        }
+        
+        /* === Input Area === */
+        #input-area {
+            display: flex;
+            align-items: center;
+            padding: 12px 15px;
+            border: 1px solid #333;
+            background-color: var(--input-bg);
+            border-radius: 4px;
+        }
+        
+        #prompt {
+            color: var(--system-color);
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        
+        #command-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--text-color);
+            font-family: inherit;
+            font-size: 14px;
+            outline: none;
+            caret-color: var(--system-color);
+        }
+        
+        #command-input::placeholder {
+            color: var(--dim-color);
+        }
+        
+        #translator-tip {
+            text-align: center;
+            color: #555;
+            font-size: 11px;
+            padding: 8px 0 5px 0;
+            font-style: italic;
+        }
+        
+        /* === Hint Box (Autocomplete) === */
+        #hint-box {
+            position: fixed;
+            bottom: 85px;
+            left: 20px;
+            right: 20px;
+            background: rgba(20, 20, 20, 0.95);
+            border: 1px solid var(--system-color);
+            border-radius: 4px;
+            padding: 8px;
+            display: none;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 100;
+            backdrop-filter: blur(5px);
+        }
+        
+        .hint-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 2px;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .hint-item:hover, .hint-item.selected {
+            background: #252525;
+        }
+        
+        .hint-cmd {
+            color: var(--system-color);
+            font-weight: bold;
+        }
+        
+        .hint-desc {
+            color: var(--dim-color);
+            font-size: 12px;
+        }
+        
+        /* === Death/Coma Overlay === */
+        #death-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(20, 0, 0, 0.8);
+            z-index: 500;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        
+        #death-overlay.active {
+            display: flex;
+        }
+        
+        #death-overlay h1 {
+            color: #880000;
+            font-size: 48px;
+            text-shadow: 0 0 30px #ff0000;
+            animation: pulse 3s infinite;
+            letter-spacing: 8px;
+        }
+        
+        #death-overlay p {
+            color: #aa4444;
+            font-size: 14px;
+            margin-top: 30px;
+            opacity: 0.8;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
+        
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+        
+        /* === Settings Panel === */
+        #settings-toggle {
+            background: transparent;
+            border: 1px solid #444;
+            color: #666;
+            padding: 4px 12px;
+            cursor: pointer;
+            font-family: inherit;
+            margin-left: 15px;
+            flex-shrink: 0;
+            font-size: 11px;
+            z-index: 1001;
+            border-radius: 3px;
+        }
+        
+        #settings-toggle:hover {
+            border-color: var(--system-color);
+            color: var(--system-color);
+        }
+        
+        #settings-panel {
+            position: fixed;
+            top: 50px;
+            right: 20px;
+            background: #111;
+            border: 1px solid #333;
+            padding: 20px;
+            display: none;
+            z-index: 1002;
+            min-width: 320px;
+            border-radius: 4px;
+        }
+        
+        #settings-panel h3 {
+            color: var(--system-color);
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        
+        #settings-panel label {
+            display: block;
+            margin-bottom: 5px;
+            color: var(--dim-color);
+            font-size: 12px;
+        }
+        
+        #settings-panel input {
+            width: 100%;
+            padding: 10px;
+            background: #0a0a0a;
+            border: 1px solid #333;
+            color: var(--text-color);
+            font-family: inherit;
+            margin-bottom: 12px;
+            border-radius: 3px;
+        }
+        
+        #settings-panel button {
+            background: var(--system-color);
+            color: #000;
+            border: none;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-family: inherit;
+            margin-right: 8px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+        
+        #settings-panel button:hover {
+            opacity: 0.9;
+        }
+        
+        /* === CRT Scanline Effect === */
+        body::after {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.15),
+                rgba(0, 0, 0, 0.15) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+            pointer-events: none;
+            z-index: 9999;
+        }
+    </style>
+</head>
+<body>
+    <!-- HUD (Top Fixed Bar) -->
+    <div id="hud">
+        <div id="hud-location">LOCATION: INITIALIZING...</div>
+        <div id="hud-status">undefined</div>
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <div id="hud-time">TIME: --:--</div>
+            <button id="settings-toggle">⚙</button>
+        </div>
+    </div>
+    
+    <!-- Death Overlay -->
+    <div id="death-overlay">
+        <h1>C O M A</h1>
+        <p>Type /respawn to awaken in a new body</p>
+    </div>
+    
+    <!-- Settings Panel -->
+    <div id="settings-panel">
+        <h3>[SYSTEM SETTINGS]</h3>
+        <label>API Key (Optional)</label>
+        <input type="password" id="api-key" placeholder="Leave empty for Free Mode">
+        <label>AI Model</label>
+        <input type="text" id="model-name" placeholder="gpt-4o">
+        <small style="display:block; color:#555; margin-bottom:15px; font-size:10px; line-height:1.6;">
+            gpt-4o | gemini/gemini-2.5-flash | claude-3-5-sonnet-20241022
+        </small>
+        <label>Identity</label>
+        <div id="identity-display" style="padding:10px; background:#0a0a0a; border:1px solid #333; color:#0a0; margin-bottom:15px; font-size:11px; border-radius:3px;">
+            Loading...
+        </div>
+        <button id="save-settings">Save</button>
+        <button id="close-settings" style="background:#333; color:#999;">Close</button>
+    </div>
+    
+    <!-- Main Container -->
+    <div id="container">
+        <div id="log-container">
+            <div id="log"></div>
+        </div>
+        
+        <div id="hint-box"></div>
+        
+        <div id="input-area">
+            <span id="prompt">&gt;</span>
+            <input type="text" id="command-input" placeholder="/help for commands" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+        </div>
+        <div id="translator-tip">Tip: Use your browser's translator to play in your language.</div>
+    </div>
+
+    <script>
+        // === UUID Generation ===
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+                const r = Math.random() * 16 | 0;
+                return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+            });
+        }
+        
+        // === XSS Prevention ===
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // === State Variables ===
+        let ws = null;
+        let userId = localStorage.getItem('userId') || (localStorage.setItem('userId', generateUUID()), localStorage.getItem('userId'));
+        let nickname = null;
+        let currentPosition = [0, 0, 0];  // x, y, z
+        let apiKey = sessionStorage.getItem('apiKey') || '';
+        let modelName = localStorage.getItem('modelName') || 'gpt-4o';
+        let commandHistory = [];
+        let historyIndex = -1;
+        let selectedHintIndex = -1;
+        let isDead = false;
+        
+        // === Command List ===
+        const COMMANDS = [
+            { cmd: '/do', desc: '<action> - AI judgment' },
+            { cmd: '/look', desc: 'Observe surroundings (5 senses)' },
+            { cmd: '/check', desc: 'Check physical status' },
+            { cmd: '/inven', desc: 'View inventory' },
+            { cmd: '/materials', desc: 'View materials registry' },
+            { cmd: '/blueprints', desc: 'View blueprints registry' },
+            { cmd: '/rules', desc: 'View world rules' },
+            { cmd: '/move', desc: '<dir> - Move (n/s/e/w)' },
+            { cmd: '/say', desc: '<msg> - Speak nearby' },
+            { cmd: '/respawn', desc: 'Revive (when in coma)' },
+            { cmd: '/export', desc: 'View recovery code' },
+            { cmd: '/import', desc: '<code> - Recover account' },
+            { cmd: '/donate', desc: 'Support the developer ☕' },
+            { cmd: '/supporters', desc: 'View supporter list 🌟' },
+            { cmd: '/help', desc: 'Show help' }
+        ];
+        
+        // === HUD Update (Z-axis included) ===
+        function updateHUD(position, time = null) {
+            if (position) {
+                currentPosition = position;
+                const x = parseInt(position[0]) || 0;
+                const y = parseInt(position[1]) || 0;
+                const z = parseInt(position[2]) || 0;
+                
+                // Z-axis display: Ground/Underground/Sky
+                let zHint, zDetail;
+                if (z < -100) {
+                    zHint = 'Deep Underground';
+                    zDetail = `${Math.abs(z)}m below`;
+                } else if (z < 0) {
+                    zHint = 'Underground';
+                    zDetail = `${Math.abs(z)}m below`;
+                } else if (z === 0) {
+                    zHint = 'Ground';
+                    zDetail = 'Surface Level';
+                } else if (z < 100) {
+                    zHint = 'Sky';
+                    zDetail = `${z}m altitude`;
+                } else if (z < 5000) {
+                    zHint = 'High Sky';
+                    zDetail = `${z}m altitude`;
+                } else {
+                    zHint = 'Stratosphere';
+                    zDetail = `${z}m altitude`;
+                }
+                
+                document.getElementById('hud-location').textContent = `(${x}, ${y}, ${z}) [${zHint}] ${zDetail}`;
+            }
+            
+            // Time calculation (X coordinate based timezone)
+            const now = new Date();
+            const hour = (now.getHours() + Math.floor((currentPosition[0] || 0) / 10)) % 24;
+            const minute = now.getMinutes();
+            const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+            document.getElementById('hud-time').textContent = `TIME: ${timeStr}`;
+            
+            // Status display
+            document.getElementById('hud-status').textContent = nickname || 'undefined';
+        }
+        
+        // === Time Auto-Update ===
+        setInterval(() => updateHUD(), 60000);
+        
+        // === XSS Prevention ===
+        function escapeHtml(text) {
+            if (typeof text !== 'string') return text;
+            return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                       .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        }
+        
+        // === UUID Copy Function ===
+        function copyUUID(uuid) {
+            navigator.clipboard.writeText(uuid).then(() => {
+                addLog('system', '✅ UUID copied to clipboard!');
+            }).catch(err => {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = uuid;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-9999px';
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                addLog('system', '✅ UUID copied to clipboard!');
+            });
+        }
+        
+        // === Event Delegation for Copy Buttons ===
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('copy-uuid-btn')) {
+                const uuid = e.target.getAttribute('data-uuid');
+                if (uuid) {
+                    copyUUID(uuid);
+                    e.target.textContent = '✅ COPIED!';
+                    setTimeout(() => {
+                        e.target.textContent = '📋 COPY';
+                    }, 2000);
+                }
+            }
+        });
+        
+        // === WebSocket Connection ===
+        function connectWebSocket() {
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${location.host}/ws/${userId}`);
+            
+            ws.onopen = () => {
+                addLog('system', '[CONNECTED] You have entered the Adaptive Reality world.');
+       
+		addLog('system', '👉 Type "/help" to see available commands.');
+
+	        updateHUD();
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                // Identity handler
+                if (data.type === 'identity') {
+                    nickname = data.nickname;
+                    updateHUD();
+	                    
+		if (data.is_new) {
+                    addLog('system', `[NEW SOUL] Welcome. You are currently "${nickname}".`);
+                    addLog('system', `[TIP] Type '/name [NewName]' later if you want to change it.`);
+                	
+                    } else {
+                        addLog('system', `[RETURN] Welcome back, ${nickname}.`);
+                    }
+                    return;
+                }
+                
+                if (data.type === 'nickname_changed') {
+                    nickname = data.nickname;
+                    updateHUD();
+                    addLog('system', `[NAME CHANGED] You are now "${nickname}".`);
+                    return;
+                }
+                
+                if (data.type === 'login_success') {
+                    localStorage.setItem('userId', data.user_id);
+                    addLog('system', '[ACCOUNT RECOVERED] Success! Reconnecting...');
+                    setTimeout(() => location.reload(), 1500);
+                    return;
+                }
+                
+                // Position update (from any message with position)
+                if (data.position) {
+                    updateHUD(data.position);
+                }
+                
+                // init_position: 접속 시 저장된 위치로 HUD 갱신 (z축 포함)
+                if (data.type === 'init_position') {
+                    const z = data.z || 0;
+                    console.log(`[INIT] Loading saved position: (${data.x}, ${data.y}, z=${z})`);
+                    updateHUD([data.x, data.y, z]);
+                    return;  // Don't add to log
+                }
+                
+                // position_update: AI에 의한 위치 변경 (z축 포함)
+                if (data.type === 'position_update') {
+                    console.log(`[MOVE] Position updated by AI: (${data.position[0]}, ${data.position[1]}, z=${data.position[2] || 0})`);
+                    updateHUD(data.position);
+                    return;  // Don't add to log
+                }
+                
+                handleMessage(data);
+            };
+            
+            ws.onclose = () => {
+                addLog('error', '[DISCONNECTED] Reconnecting in 3 seconds...');
+                setTimeout(connectWebSocket, 3000);
+            };
+            
+            ws.onerror = () => addLog('error', '[ERROR] Connection failed.');
+        }
+        
+        // === Message Handler ===
+        function handleMessage(data) {
+            let msgType = data.type || 'system';
+            let content = '';
+            
+            switch (msgType) {
+                case 'system':
+                case 'error':
+                case 'narrative':
+                case 'death':
+                    content = escapeHtml(data.content);
+                    break;
+                case 'action':
+                    content = `[${escapeHtml(data.actor)}] ${escapeHtml(data.action)}\n→ ${escapeHtml(data.result)}`;
+                    break;
+                case 'chat':
+                    // Support both speaker and sender + supporter badge
+                    const speaker = data.speaker || data.sender || 'Unknown';
+                    const isSupporter = data.is_supporter || false;
+                    if (isSupporter) {
+                        msgType = 'chat supporter';
+                        const badge = ' ★';
+                        content = `<span class="supporter-name">${escapeHtml(speaker)}${badge}</span>: ${escapeHtml(data.content.replace(speaker + ' says: ', '').replace(/^"(.*)"$/, '$1'))}`;
+                    } else {
+                        content = escapeHtml(data.content);
+                    }
+                    break;
+                case 'you_died':
+                    content = escapeHtml(data.content);
+                    setDeadState(true);
+                    break;
+                case 'respawn':
+                    content = escapeHtml(data.content);
+                    setDeadState(false);
+                    if (data.position) updateHUD(data.position);
+                    break;
+                case 'discovery':
+                    content = escapeHtml(data.content);
+                    break;
+                case 'blueprint':
+                    content = escapeHtml(data.content);
+                    break;
+                case 'uuid_display':
+                    // Put UUID in input field for easy copy
+                    content = `[SECURITY] Your UUID is now in the input field below. Select all (Ctrl+A) and copy (Ctrl+C)!`;
+                    document.getElementById('command-input').value = data.uuid;
+                    document.getElementById('command-input').select();
+                    msgType = 'system';
+                    break;
+                case 'donate_info':
+                    // Donation info + put UUID in input field
+                    content = `☕ [SUPPORT THE DEVELOPER]
+
+→ https://buymeacoffee.com/2805khun
+
+🌟 GET GOLD USERNAME: After donating, send your UUID to the developer.
+Your UUID is now in the input field below. Select all (Ctrl+A) and copy (Ctrl+C)!`;
+                    document.getElementById('command-input').value = data.uuid;
+                    document.getElementById('command-input').select();
+                    msgType = 'system';
+                    break;
+                default:
+                    content = escapeHtml(JSON.stringify(data));
+            }
+            
+            addLog(msgType, content, data.timestamp);
+        }
+        
+        // === Death/Coma State Handler ===
+        function setDeadState(dead) {
+            isDead = dead;
+            document.getElementById('death-overlay').classList.toggle('active', dead);
+        }
+        
+        // === Log System (Production: 100 entries max) ===
+        const MAX_LOG_ENTRIES = 100;
+        
+        function addLog(type, content, timestamp = null) {
+            const logEl = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            
+            const time = timestamp ? new Date(timestamp).toLocaleTimeString('ko-KR', {
+                hour: '2-digit', minute: '2-digit'
+            }) : new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+            
+            entry.innerHTML = `<span class="timestamp">[${time}]</span>${content.replace(/\n/g, '<br>')}`;
+            logEl.appendChild(entry);
+            
+            // Apply fade effect
+            applyFadeEffect();
+            
+            // Remove old logs
+            while (logEl.children.length > MAX_LOG_ENTRIES) {
+                logEl.removeChild(logEl.firstChild);
+            }
+            
+            // Scroll to bottom
+            document.getElementById('log-container').scrollTop = document.getElementById('log-container').scrollHeight;
+        }
+        
+        // === Fadeout Effect ===
+        function applyFadeEffect() {
+            const entries = document.querySelectorAll('.log-entry');
+            const total = entries.length;
+            
+            entries.forEach((entry, i) => {
+                entry.classList.remove('fading', 'very-old');
+                const age = total - i - 1;
+                
+                if (age > 8) entry.classList.add('very-old');
+                else if (age > 5) entry.classList.add('fading');
+            });
+        }
+        
+        // === Command Sender ===
+        function sendCommand(input) {
+            if (!input.trim()) return;
+            
+            if (isDead && !input.toLowerCase().startsWith('/respawn')) {
+                addLog('error', '[COMA] Only /respawn command is available.');
+                return;
+            }
+            
+            commandHistory.unshift(input);
+            if (commandHistory.length > 50) commandHistory.pop();
+            historyIndex = -1;
+            
+            if (input.startsWith('/')) {
+                ws.send(JSON.stringify({
+                    type: 'command',
+                    content: input,
+                    api_key: apiKey,
+                    model: modelName
+                }));
+            } else {
+                if (isDead) {
+                    addLog('error', '[COMA] You cannot speak.');
+                    return;
+                }
+                ws.send(JSON.stringify({ type: 'chat', content: input }));
+            }
+        }
+        
+        // === Hint System (Command Autocomplete) ===
+        function showHints(filter = '') {
+            const hintBox = document.getElementById('hint-box');
+            const filtered = COMMANDS.filter(c => c.cmd.startsWith(filter.split(' ')[0]));
+            
+            if (!filtered.length || !filter.startsWith('/')) {
+                hintBox.style.display = 'none';
+                return;
+            }
+            
+            // Show current input preview at top
+            const inputPreview = `<div style="padding:6px 12px; border-bottom:1px solid #333; color:#0f0; font-family:monospace; margin-bottom:4px;">
+                <span style="color:#666;">&gt;</span> ${escapeHtml(filter)}<span style="animation:blink 1s infinite;">▌</span>
+            </div>`;
+            
+            const hintItems = filtered.slice(0, 5).map((c, i) => `
+                <div class="hint-item ${i === selectedHintIndex ? 'selected' : ''}" data-cmd="${c.cmd}">
+                    <span class="hint-cmd">${c.cmd}</span>
+                    <span class="hint-desc">${c.desc}</span>
+                </div>
+            `).join('');
+            
+            hintBox.innerHTML = inputPreview + hintItems;
+            hintBox.style.display = 'block';
+            
+            hintBox.querySelectorAll('.hint-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    document.getElementById('command-input').value = item.dataset.cmd + ' ';
+                    document.getElementById('command-input').focus();
+                    hintBox.style.display = 'none';
+                });
+            });
+        }
+        
+        // === Settings Panel ===
+        function toggleSettings() {
+            const panel = document.getElementById('settings-panel');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+            
+            if (panel.style.display === 'block') {
+                document.getElementById('api-key').value = apiKey;
+                document.getElementById('model-name').value = modelName;
+                document.getElementById('identity-display').innerHTML = 
+                    `<div style="color:#0a0">${nickname || '...'}</div>` +
+                    `<div style="color:#555; font-size:9px; margin-top:5px;">UUID: ${userId.slice(0, 8)}...</div>`;
+            }
+        }
+        
+        function saveSettings() {
+            apiKey = document.getElementById('api-key').value;
+            const newModel = document.getElementById('model-name').value.trim();
+            
+            apiKey ? sessionStorage.setItem('apiKey', apiKey) : sessionStorage.removeItem('apiKey');
+            if (newModel) {
+                modelName = newModel;
+                localStorage.setItem('modelName', modelName);
+            }
+            
+            addLog('system', `[SAVED] ${apiKey ? 'API Key Mode' : 'Free Mode'}`);
+            document.getElementById('settings-panel').style.display = 'none';
+        }
+        
+        // === Event Listeners ===
+        document.addEventListener('DOMContentLoaded', () => {
+            connectWebSocket();
+            
+            const input = document.getElementById('command-input');
+            const hintBox = document.getElementById('hint-box');
+            
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    sendCommand(input.value);
+                    input.value = '';
+                    hintBox.style.display = 'none';
+                    selectedHintIndex = -1;
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (hintBox.style.display === 'block') {
+                        selectedHintIndex = Math.max(0, selectedHintIndex - 1);
+                        updateHintSelection();
+                    } else if (historyIndex < commandHistory.length - 1) {
+                        input.value = commandHistory[++historyIndex];
+                    }
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (hintBox.style.display === 'block') {
+                        const items = hintBox.querySelectorAll('.hint-item');
+                        selectedHintIndex = Math.min(items.length - 1, selectedHintIndex + 1);
+                        updateHintSelection();
+                    } else if (historyIndex > 0) {
+                        input.value = commandHistory[--historyIndex];
+                    } else if (historyIndex === 0) {
+                        historyIndex = -1;
+                        input.value = '';
+                    }
+                } else if (e.key === 'Tab') {
+                    e.preventDefault();
+                    if (hintBox.style.display === 'block' && selectedHintIndex >= 0) {
+                        const items = hintBox.querySelectorAll('.hint-item');
+                        if (items[selectedHintIndex]) {
+                            input.value = items[selectedHintIndex].dataset.cmd + ' ';
+                            hintBox.style.display = 'none';
+                            selectedHintIndex = -1;
+                        }
+                    }
+                } else if (e.key === 'Escape') {
+                    hintBox.style.display = 'none';
+                    selectedHintIndex = -1;
+                }
+            });
+            
+            function updateHintSelection() {
+                hintBox.querySelectorAll('.hint-item').forEach((item, i) => {
+                    item.classList.toggle('selected', i === selectedHintIndex);
+                });
+            }
+            
+            input.addEventListener('input', (e) => {
+                const value = e.target.value;
+                if (value.startsWith('/')) {
+                    selectedHintIndex = 0;
+                    showHints(value.split(' ')[0]);
+                } else {
+                    hintBox.style.display = 'none';
+                }
+            });
+            
+            document.getElementById('settings-toggle').addEventListener('click', toggleSettings);
+            document.getElementById('save-settings').addEventListener('click', saveSettings);
+            document.getElementById('close-settings').addEventListener('click', () => {
+                document.getElementById('settings-panel').style.display = 'none';
+            });
+            
+            input.focus();
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('#settings-panel') && !e.target.closest('#settings-toggle')) {
+                    input.focus();
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+{
+  "_README": "이 파일을 world_data.json으로 복사하면 초기 데이터가 로드됩니다.",
+  "objects": {
+    "genesis_monolith": {
+      "id": "genesis_monolith",
+      "name": "Genesis Monolith",
+      "position": [0, 0, 0],
+      "description": "A towering black monolith standing amidst mountains of garbage. 'Hello, World!' is inscribed on its surface.",
+      "indestructible": true,
+      "properties": {
+        "material": "unknown",
+        "age": "immeasurable"
+      }
+    }
+  },
+  "materials": {
+    "_README": {"description": "Discovered materials stored here", "total_discoveries": 0}
+  },
+  "object_types": {
+    "_README": {"description": "User-created object blueprints registry", "total_blueprints": 0}
+  },
+  "natural_elements": {
+    "iron": {"name": "Iron", "type": "metal", "hardness": 4, "density": 7.87, "melting_point": 1538},
+    "copper": {"name": "Copper", "type": "metal", "hardness": 3, "density": 8.96, "melting_point": 1085},
+    "wood": {"name": "Wood", "type": "organic", "hardness": 2, "density": 0.6, "flammable": true},
+    "water": {"name": "Water", "type": "compound", "hardness": 0, "density": 1.0, "boiling_point": 100}
+  },
+  "biomes_discovered": {},
+  "history": [],
+  "players": {},
+  "users": {},
+  "supporters": {},
+  "server_time_started": null
+}
+
