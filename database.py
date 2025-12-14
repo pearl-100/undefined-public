@@ -19,6 +19,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 
 DB_FILE = "world.db"
+MAX_HISTORY_CACHE = int(os.getenv("MAX_HISTORY_CACHE", "500"))
 
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║                         DATABASE SCHEMA                                        ║
@@ -682,7 +683,8 @@ class Database:
             "object_types": await self.get_all_object_types(),
             "natural_elements": await self.get_all_natural_elements(),
             "biomes_discovered": await self.get_rule("biomes_discovered") or {},
-            "history": await self.get_all_logs(),
+            # Keep history bounded in RAM; full logs are stored in SQLite.
+            "history": await self.get_recent_logs(limit=MAX_HISTORY_CACHE),
             "players": {},  # Legacy, kept empty
             "users": await self.get_all_users(),
             "supporters": await self.get_all_supporters(),

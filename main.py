@@ -39,6 +39,15 @@ load_dotenv()
 world_data_lock = asyncio.Lock()    # Protects world_data dictionary access
 file_write_lock = asyncio.Lock()    # Protects file I/O operations
 
+# Heavy task concurrency limiter (Oracle Free Tier RAM 1GB friendly)
+# - Limits simultaneous /do (AI + DB write) to avoid memory/CPU spikes.
+DO_SEMAPHORE = asyncio.Semaphore(5)
+DO_QUEUE_WAITING_MESSAGE = "[QUEUED] High traffic — waiting for your turn..."
+
+# Memory guardrails (keep in-memory history bounded)
+MAX_IN_MEMORY_HISTORY = 500
+MEMORY_CLEANUP_INTERVAL_SECONDS = 60
+
 # === Server Configuration ===
 SERVER_API_KEY = os.getenv("SERVER_API_KEY", "")
 SERVER_DEFAULT_MODEL = os.getenv("SERVER_DEFAULT_MODEL", "gemini-2.5-flash")
@@ -1382,8 +1391,8 @@ class ConnectionManager:
             return True
         except Exception as e:
             print(f"[WS ERROR] Failed to send to {client_id}: {e}")
-            # 좀비 연결 정리
-            self.disconnect(client_id)
+            # 좀비 연결 정리 (free memory too)
+            self.cleanup_client_state(client_id)
             return False
     
     async def broadcast(self, message: str, exclude: str = None):
@@ -1405,7 +1414,7 @@ class ConnectionManager:
         
         # 좀비 연결 정리
         for client_id in dead_connections:
-            self.disconnect(client_id)
+            self.cleanup_client_state(client_id)
     
     def get_active_count(self) -> int:
         """활성 연결 수 반환"""
@@ -1420,6 +1429,16 @@ class ConnectionManager:
             "connected_at": self.connection_times.get(client_id, "Unknown"),
             "player_data": self.player_data.get(client_id, {})
         }
+
+    def cleanup_client_state(self, client_id: str):
+        """Fully cleanup disconnected client to prevent memory growth on long-running servers."""
+        # Connection cleanup
+        self.disconnect(client_id)
+        # Player/cache cleanup
+        if client_id in self.player_data:
+            del self.player_data[client_id]
+        if client_id in self.nickname_to_uuid:
+            del self.nickname_to_uuid[client_id]
 
 manager = ConnectionManager()
 
@@ -1557,6 +1576,7 @@ async def midnight_backup_scheduler():
 
 # === FastAPI Application ===
 scheduler_task = None
+memory_cleanup_task = None
 
 # Global database instance
 db_instance: Optional[Database] = None
@@ -1604,9 +1624,24 @@ async def load_world_data_from_db() -> dict:
         db_instance = await get_db()
     return await db_instance.get_full_world_state()
 
+async def periodic_memory_cleanup():
+    """Periodically trim in-memory structures to avoid RAM blow-ups on 1GB servers."""
+    global world_data
+    while True:
+        try:
+            # Bound in-memory history list
+            history = world_data.get("history")
+            if isinstance(history, list) and len(history) > MAX_IN_MEMORY_HISTORY:
+                world_data["history"] = history[-MAX_IN_MEMORY_HISTORY:]
+        except Exception as e:
+            # Never let cleanup crash the server
+            print(f"[CLEANUP ERROR] {e}")
+
+        await asyncio.sleep(MEMORY_CLEANUP_INTERVAL_SECONDS)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global world_data, scheduler_task, db_instance
+    global world_data, scheduler_task, db_instance, memory_cleanup_task
     
     # SQLite DB 초기화 + JSON 마이그레이션
     db_instance = await migrate_json_to_db_if_needed()
@@ -1625,6 +1660,9 @@ async def lifespan(app: FastAPI):
     if GIT_AUTO_PUSH:
         scheduler_task = asyncio.create_task(midnight_backup_scheduler())
         print("[SCHEDULER] Midnight auto-backup scheduler started!")
+
+    # Memory cleanup loop (keeps in-memory caches bounded)
+    memory_cleanup_task = asyncio.create_task(periodic_memory_cleanup())
     
     yield
     
@@ -1632,6 +1670,10 @@ async def lifespan(app: FastAPI):
     if scheduler_task:
         scheduler_task.cancel()
         print("[SCHEDULER] Backup scheduler stopped.")
+
+    if memory_cleanup_task:
+        memory_cleanup_task.cancel()
+        print("[CLEANUP] Memory cleanup loop stopped.")
     
     # DB 연결 종료
     await close_db()
@@ -1643,6 +1685,11 @@ app = FastAPI(title="undefined", lifespan=lifespan)
 # 템플릿 설정
 os.makedirs("templates", exist_ok=True)
 templates = Jinja2Templates(directory="templates")
+
+@app.api_route("/health", methods=["GET", "HEAD"])
+async def health_check():
+    """Health check endpoint for uptime monitors (e.g., UptimeRobot)."""
+    return {"status": "ok"}
 
 @app.get("/", response_class=HTMLResponse)
 async def get_home(request: Request):
@@ -1951,7 +1998,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 await manager.broadcast(chat_msg)
                 
     except WebSocketDisconnect:
-        manager.disconnect(nickname)
+        manager.cleanup_client_state(nickname)
         disconnect_msg = json.dumps({
             "type": "system",
             "content": f"[SYSTEM] {nickname} has left the world.",
@@ -2461,7 +2508,16 @@ Last Modified: {meta.get('last_modified', 'Unknown')}
                 }), client_id)
                 return
             
-        await process_action(client_id, args, use_api_key, use_model, is_guest)
+        # Concurrency limiter: /do is the heaviest path (AI + DB writes)
+        if DO_SEMAPHORE.locked():
+            await manager.send_personal(json.dumps({
+                "type": "system",
+                "content": DO_QUEUE_WAITING_MESSAGE,
+                "timestamp": datetime.now().isoformat()
+            }), client_id)
+
+        async with DO_SEMAPHORE:
+            await process_action(client_id, args, use_api_key, use_model, is_guest)
     
     elif cmd == "/respawn":
         await handle_respawn(client_id)
@@ -3258,7 +3314,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
     player_state = json.dumps({
         "id": client_id,
         "position": pos,
-        "status": player.get("status", "건강함"),
+        "status": player.get("status", "Healthy"),
         "inventory": player.get("inventory", {})
     }, ensure_ascii=False)
     
@@ -3463,6 +3519,10 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
             "result": narrative[:200]  # 요약
         }
         world_data["history"].append(history_entry)
+
+        # Memory guardrail: keep history bounded in RAM
+        if isinstance(world_data.get("history"), list) and len(world_data["history"]) > MAX_IN_MEMORY_HISTORY:
+            world_data["history"] = world_data["history"][-MAX_IN_MEMORY_HISTORY:]
         
         # DB에 로그 저장
         if db_instance is None:
@@ -3493,7 +3553,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         elif "model" in error_lower or "not found" in error_lower:
             error_content = f"[ERROR] Model '{model}' not found. Please verify the model name."
         elif "rate" in error_lower or "limit" in error_lower or "quota" in error_lower or "budget" in error_lower or "exceeded" in error_lower:
-            error_content = "💸 개발자의 지갑이 텅 비었습니다 (Budget Exceeded). 잠시 후 다시 시도해주세요!"
+            error_content = "💸 Budget exceeded. Please try again later."
         elif "timeout" in error_lower or "timed out" in error_lower:
             error_content = "[ERROR] Request timed out. Please try again."
         elif "connection" in error_lower or "network" in error_lower:
