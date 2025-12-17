@@ -52,6 +52,11 @@ MEMORY_CLEANUP_INTERVAL_SECONDS = 60
 SERVER_API_KEY = os.getenv("SERVER_API_KEY", "")
 SERVER_DEFAULT_MODEL = os.getenv("SERVER_DEFAULT_MODEL", "gemini-2.5-flash")
 
+# If true, every AI narrative becomes a persistent "scene snapshot" object at the current location.
+# This makes the described world become the world state (visible to others later).
+PERSIST_SCENE_SNAPSHOTS = os.getenv("PERSIST_SCENE_SNAPSHOTS", "true").lower() in ("1", "true", "yes", "y", "on")
+MAX_SCENE_SNAPSHOT_CHARS = int(os.getenv("MAX_SCENE_SNAPSHOT_CHARS", "1200"))
+
 # === File Paths ===
 WORLD_RULES_FILE = "world_rules.json"
 WORLD_DATA_FILE = "world_data.json"
@@ -1445,6 +1450,12 @@ manager = ConnectionManager()
 # === Backup System (Git Integration) ===
 GIT_AUTO_PUSH = os.getenv("GIT_AUTO_PUSH", "false").lower() == "true"
 
+# === Log Archive / Retention (keep world state, archive logs) ===
+LOG_ARCHIVE_ENABLED = os.getenv("LOG_ARCHIVE_ENABLED", "true").lower() in ("1", "true", "yes", "y", "on")
+LOG_ARCHIVE_KEEP_LAST = int(os.getenv("LOG_ARCHIVE_KEEP_LAST", "50000"))
+LOG_ARCHIVE_COMPRESS_GZIP = os.getenv("LOG_ARCHIVE_COMPRESS_GZIP", "true").lower() in ("1", "true", "yes", "y", "on")
+LOG_ARCHIVE_DIR = os.getenv("LOG_ARCHIVE_DIR", os.path.join(BACKUP_DIR, "logs"))
+
 def backup_world_data_with_git(auto_git: bool = False):
     """
     DB에서 world_data를 추출하여 JSON 백업 및 선택적 Git 푸시
@@ -1574,8 +1585,33 @@ async def midnight_backup_scheduler():
         # 1분 대기 (같은 자정에 중복 실행 방지)
         await asyncio.sleep(60)
 
+async def midnight_log_archive_scheduler():
+    """매일 자정에 logs를 아카이브하고 DB에는 최근 N개만 남김 (world state는 유지)"""
+    while True:
+        seconds_until_midnight = get_seconds_until_midnight()
+        print(f"[LOGS] Next log archive in {seconds_until_midnight/3600:.1f} hours (at midnight)")
+        await asyncio.sleep(seconds_until_midnight)
+
+        print("[LOGS] Midnight log archive starting...")
+        try:
+            db = await get_db()
+            result = await db.archive_and_trim_logs(
+                archive_dir=LOG_ARCHIVE_DIR,
+                keep_last=LOG_ARCHIVE_KEEP_LAST,
+                compress_gzip=LOG_ARCHIVE_COMPRESS_GZIP,
+            )
+            if result:
+                print(f"[LOGS] Archived {result['archived']} rows to {result['path']} (kept last {result['kept']})")
+            else:
+                print(f"[LOGS] No archive needed (<= {LOG_ARCHIVE_KEEP_LAST} rows)")
+        except Exception as e:
+            print(f"[LOGS ERROR] Log archive failed: {e}")
+
+        await asyncio.sleep(60)
+
 # === FastAPI Application ===
 scheduler_task = None
+log_archive_task = None
 memory_cleanup_task = None
 
 # Global database instance
@@ -1641,7 +1677,7 @@ async def periodic_memory_cleanup():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global world_data, scheduler_task, db_instance, memory_cleanup_task
+    global world_data, scheduler_task, log_archive_task, db_instance, memory_cleanup_task
     
     # SQLite DB 초기화 + JSON 마이그레이션
     db_instance = await migrate_json_to_db_if_needed()
@@ -1661,6 +1697,11 @@ async def lifespan(app: FastAPI):
         scheduler_task = asyncio.create_task(midnight_backup_scheduler())
         print("[SCHEDULER] Midnight auto-backup scheduler started!")
 
+    # 자정 로그 아카이브 스케줄러 시작 (logs만 정리)
+    if LOG_ARCHIVE_ENABLED:
+        log_archive_task = asyncio.create_task(midnight_log_archive_scheduler())
+        print("[LOGS] Midnight log archive scheduler started!")
+
     # Memory cleanup loop (keeps in-memory caches bounded)
     memory_cleanup_task = asyncio.create_task(periodic_memory_cleanup())
     
@@ -1670,6 +1711,10 @@ async def lifespan(app: FastAPI):
     if scheduler_task:
         scheduler_task.cancel()
         print("[SCHEDULER] Backup scheduler stopped.")
+
+    if log_archive_task:
+        log_archive_task.cancel()
+        print("[LOGS] Log archive scheduler stopped.")
 
     if memory_cleanup_task:
         memory_cleanup_task.cancel()
@@ -2031,7 +2076,13 @@ async def handle_command(client_id: str, command: str, api_key: str, model: str 
 /import <code> - Recover account with code
 /donate - Support the developer ☕
 /supporters - View supporter list 🌟
-/help - Show this help"""
+/help - Show this help
+
+[PERSISTENCE]
+- Changes are saved to the shared world when the AI returns a non-empty "world_update" (create/modify/destroy),
+  registers a new material/blueprint, or (if enabled) saves a "scene snapshot" for the current location.
+- If you want others to see something later: try actions like "search/discover/mark/build" that produce a world_update.
+- Building usually requires materials/tools. If you lack them, start by exploring/scavenging and leaving visible markers."""
         await manager.send_personal(json.dumps({
             "type": "system",
             "content": help_text,
@@ -3427,6 +3478,85 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         
         # 결과 방송
         narrative = result.get("narrative", "Something happened...")
+
+        # Determine whether this action produced persistent shared-world changes.
+        # (Player-only changes like movement/inventory are saved for that player but are not "world persistent".)
+        world_update = result.get("world_update") or {}
+        new_discovery = result.get("new_discovery")
+        new_object_type = result.get("new_object_type")
+
+        creates = world_update.get("create", [])
+        destroys = world_update.get("destroy", [])
+        modifies = world_update.get("modify", {})
+
+        # Treat as "world persistent" only if there is a real shared-world change.
+        # (Some models may return empty placeholders like {"modify": {"id": {}}}.)
+        create_count = 0
+        if isinstance(creates, list):
+            create_count = sum(1 for item in creates if isinstance(item, dict) and bool(item.get("id")))
+
+        destroy_count = len(destroys) if isinstance(destroys, list) else 0
+
+        modify_count = 0
+        if isinstance(modifies, dict):
+            modify_count = sum(1 for changes in modifies.values() if isinstance(changes, dict) and len(changes) > 0)
+
+        has_create = create_count > 0
+        has_destroy = destroy_count > 0
+        has_modify = modify_count > 0
+        has_world_update = bool(has_create or has_destroy or has_modify)
+        has_discovery = isinstance(new_discovery, dict) and bool(new_discovery.get("id"))
+        has_blueprint = isinstance(new_object_type, dict) and bool(new_object_type.get("id"))
+
+        # Optional: persist the narrative itself as a location "scene snapshot" object.
+        scene_snapshot_id = None
+        scene_snapshot_saved = False
+        if PERSIST_SCENE_SNAPSHOTS:
+            try:
+                # Use the current player position used to build the prompt
+                sx, sy, sz = int(pos[0]), int(pos[1]), int(pos[2] if len(pos) > 2 else 0)
+                scene_snapshot_id = f"scene_{sx}_{sy}_{sz}"
+                snapshot_text = narrative if isinstance(narrative, str) else json.dumps(narrative, ensure_ascii=False)
+                if len(snapshot_text) > MAX_SCENE_SNAPSHOT_CHARS:
+                    snapshot_text = snapshot_text[:MAX_SCENE_SNAPSHOT_CHARS] + "…"
+
+                # Upsert into world objects so it becomes visible to others later (nearby_objects / /look).
+                if "objects" not in world_data:
+                    world_data["objects"] = {}
+                scene_obj = world_data["objects"].get(scene_snapshot_id, {})
+                scene_obj.update({
+                    "id": scene_snapshot_id,
+                    "name": "Scene Snapshot",
+                    "position": [sx, sy, sz],
+                    "description": snapshot_text,
+                    "properties": {
+                        **(scene_obj.get("properties", {}) if isinstance(scene_obj.get("properties", {}), dict) else {}),
+                        "kind": "scene_snapshot",
+                        "updated_at": datetime.now().isoformat(),
+                        "source_action": action,
+                    }
+                })
+                world_data["objects"][scene_snapshot_id] = scene_obj
+
+                if db_instance is None:
+                    db_instance = await get_db()
+                await db_instance.save_object(scene_snapshot_id, scene_obj)
+                scene_snapshot_saved = True
+            except Exception as e:
+                # Never let snapshotting crash the action.
+                print(f"[SNAPSHOT ERROR] Failed to persist scene snapshot: {e}")
+
+        persisted = bool(has_world_update or has_discovery or has_blueprint or scene_snapshot_saved)
+        if has_world_update:
+            persisted_reason = "world_update"
+        elif has_discovery:
+            persisted_reason = "new_material"
+        elif has_blueprint:
+            persisted_reason = "new_blueprint"
+        elif scene_snapshot_saved:
+            persisted_reason = "scene_snapshot"
+        else:
+            persisted_reason = "narrative_only"
         
         broadcast_msg = json.dumps({
             "type": "action",
@@ -3435,12 +3565,20 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
             "result": narrative,
             "success": result.get("success", True),
             "is_guest": is_guest,
+            "persisted": persisted,
+            "persisted_reason": persisted_reason,
+            "persisted_details": {
+                "create": create_count,
+                "modify": modify_count,
+                "destroy": destroy_count,
+                "scene_snapshot": scene_snapshot_saved,
+                "scene_snapshot_id": scene_snapshot_id
+            },
             "timestamp": datetime.now().isoformat()
         })
         await manager.broadcast(broadcast_msg)
         
         # 월드 업데이트 (비동기 - DB 저장 포함)
-        world_update = result.get("world_update", {})
         if world_update:
             await apply_world_update_async(world_update)
         
@@ -3502,12 +3640,10 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
             await manager.save_player_to_db(client_id)
         
         # === New Material Discovery Handler ===
-        new_discovery = result.get("new_discovery")
         if new_discovery and isinstance(new_discovery, dict) and new_discovery.get("id"):
             await handle_new_discovery(new_discovery, client_id)
         
         # === New Object Type Registration ===
-        new_object_type = result.get("new_object_type")
         if new_object_type and isinstance(new_object_type, dict) and new_object_type.get("id"):
             await handle_new_object_type(new_object_type, client_id)
         
@@ -3589,6 +3725,9 @@ async def apply_world_update_async(update: dict):
     # 수정
     for item_id, changes in update.get("modify", {}).items():
         if item_id in world_data["objects"]:
+            # Skip no-op updates to avoid unnecessary DB writes and false "persisted" signals.
+            if not isinstance(changes, dict) or len(changes) == 0:
+                continue
             world_data["objects"][item_id].update(changes)
             await db_instance.save_object(item_id, world_data["objects"][item_id])
 

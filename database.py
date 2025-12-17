@@ -17,6 +17,7 @@ import json
 import aiosqlite
 from datetime import datetime
 from typing import Dict, List, Optional, Any
+import gzip
 
 DB_FILE = "world.db"
 MAX_HISTORY_CACHE = int(os.getenv("MAX_HISTORY_CACHE", "500"))
@@ -510,6 +511,91 @@ class Database:
                     "result": row["result"]
                 })
         return logs
+
+    # ═══════════════════════════════════════════════════════════════════
+    #                      LOG ARCHIVE + RETENTION
+    # ═══════════════════════════════════════════════════════════════════
+
+    async def archive_and_trim_logs(
+        self,
+        archive_dir: str,
+        keep_last: int = 50000,
+        compress_gzip: bool = True,
+    ) -> Optional[dict]:
+        """
+        Archive old logs to a JSONL (optionally gzipped) file and trim the logs table to keep_last rows.
+
+        - World state (objects/users/materials/...) is NOT affected.
+        - This only touches the 'logs' table.
+        Returns a dict with archive metadata if an archive occurred, otherwise None.
+        """
+        if keep_last <= 0:
+            raise ValueError("keep_last must be > 0")
+
+        # Count rows
+        async with self.conn.execute("SELECT COUNT(*) AS cnt FROM logs") as cursor:
+            row = await cursor.fetchone()
+            total = int(row["cnt"]) if row else 0
+
+        if total <= keep_last:
+            return None
+
+        # Find cutoff id: keep rows with id >= cutoff_id
+        offset = keep_last - 1
+        async with self.conn.execute(
+            "SELECT id FROM logs ORDER BY id DESC LIMIT 1 OFFSET ?",
+            (offset,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            cutoff_id = int(row["id"])
+
+        # Determine archive range
+        async with self.conn.execute("SELECT MIN(id) AS min_id, MAX(id) AS max_id FROM logs WHERE id < ?", (cutoff_id,)) as cursor:
+            row = await cursor.fetchone()
+            if not row or row["min_id"] is None:
+                return None
+            min_id = int(row["min_id"])
+            max_id = int(row["max_id"])
+
+        os.makedirs(archive_dir, exist_ok=True)
+        date_tag = datetime.now().strftime("%Y%m%d")
+        base_name = f"logs_{date_tag}_{min_id}-{max_id}.jsonl"
+        archive_path = os.path.join(archive_dir, base_name + (".gz" if compress_gzip else ""))
+
+        # Stream rows to file (avoid loading everything into RAM)
+        opener = (lambda p: gzip.open(p, "wt", encoding="utf-8")) if compress_gzip else (lambda p: open(p, "w", encoding="utf-8"))
+        written = 0
+        with opener(archive_path) as f:
+            async with self.conn.execute(
+                "SELECT id, timestamp, actor, action, result FROM logs WHERE id < ? ORDER BY id",
+                (cutoff_id,),
+            ) as cursor:
+                async for r in cursor:
+                    rec = {
+                        "id": int(r["id"]),
+                        "timestamp": r["timestamp"],
+                        "actor": r["actor"],
+                        "action": r["action"],
+                        "result": r["result"],
+                    }
+                    f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                    written += 1
+
+        # Trim old rows from DB
+        await self.conn.execute("DELETE FROM logs WHERE id < ?", (cutoff_id,))
+        await self.conn.commit()
+
+        return {
+            "archived": written,
+            "total_before": total,
+            "kept": keep_last,
+            "cutoff_id": cutoff_id,
+            "min_id": min_id,
+            "max_id": max_id,
+            "path": archive_path,
+        }
     
     # ═══════════════════════════════════════════════════════════════════
     #                           SUPPORTERS

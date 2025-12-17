@@ -189,6 +189,29 @@
             text-align: center;
             animation: blueprintGlow 2s ease-in-out;
         }
+
+        /* Persisted / Not saved badge */
+        .persist-badge {
+            display: inline-block;
+            font-size: 10px;
+            line-height: 1.2;
+            padding: 2px 8px;
+            border-radius: 999px;
+            border: 1px solid #444;
+            margin-right: 8px;
+            vertical-align: middle;
+            letter-spacing: 0.3px;
+        }
+        .persist-badge.persisted {
+            color: var(--system-color);
+            border-color: var(--system-color);
+            background: rgba(0, 204, 102, 0.08);
+        }
+        .persist-badge.not-persisted {
+            color: #888;
+            border-color: #444;
+            background: rgba(255, 255, 255, 0.03);
+        }
         
         @keyframes blueprintGlow {
             0% { box-shadow: 0 0 5px #00ccff; }
@@ -689,7 +712,42 @@
                     content = escapeHtml(data.content);
                     break;
                 case 'action':
-                    content = `[${escapeHtml(data.actor)}] ${escapeHtml(data.action)}\n→ ${escapeHtml(data.result)}`;
+                    const isPersisted = data.persisted === true;
+                    const badgeText = isPersisted ? 'PERSISTED' : 'NOT SAVED';
+                    const badgeClass = isPersisted ? 'persisted' : 'not-persisted';
+                    const reasonRaw = data.persisted_reason || '';
+                    const details = data.persisted_details || null;
+                    
+                    // Human-friendly reason string (shown inline)
+                    let reasonText = '';
+                    if (isPersisted) {
+                        if (reasonRaw === 'world_update' && details) {
+                            const c = Number(details.create || 0);
+                            const m = Number(details.modify || 0);
+                            const d = Number(details.destroy || 0);
+                            const hasScene = details.scene_snapshot === true;
+                            reasonText = `world_update (create:${c}, modify:${m}, destroy:${d})${hasScene ? ' + scene snapshot' : ''}`;
+                        } else if (reasonRaw === 'scene_snapshot') {
+                            const id = details && details.scene_snapshot_id ? ` (${details.scene_snapshot_id})` : '';
+                            reasonText = `scene snapshot saved${id}`;
+                        } else if (reasonRaw === 'new_material') {
+                            reasonText = 'new material registered';
+                        } else if (reasonRaw === 'new_blueprint') {
+                            reasonText = 'new blueprint registered';
+                        } else if (reasonRaw) {
+                            reasonText = reasonRaw;
+                        } else {
+                            reasonText = 'saved';
+                        }
+                    } else {
+                        reasonText = 'narrative only (no world_update)';
+                    }
+                    const reasonInline = `<span style="color:#777; font-size:11px;"> ${escapeHtml(reasonText)}</span>`;
+                    const badgeTitle = reasonRaw ? ` (${escapeHtml(reasonRaw)})` : '';
+                    const badge = `<span class="persist-badge ${badgeClass}" title="Persisted means the shared world was updated and saved${badgeTitle}.">${badgeText}</span>`;
+                    content = `${badge}[${escapeHtml(data.actor)}] ${escapeHtml(data.action)}\n→ ${escapeHtml(data.result)}`;
+                    // Put reason on its own line for readability
+                    content += `\n${reasonInline}`;
                     break;
                 case 'chat':
                     // Support both speaker and sender + supporter badge
