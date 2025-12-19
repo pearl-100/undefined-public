@@ -138,9 +138,15 @@ class Database:
         """Connect to database and initialize schema"""
         self._connection = await aiosqlite.connect(self.db_path)
         self._connection.row_factory = aiosqlite.Row
+        
+        # Optimize for high concurrency and robustness
+        await self._connection.execute("PRAGMA journal_mode=WAL")
+        await self._connection.execute("PRAGMA synchronous=NORMAL")
+        await self._connection.execute("PRAGMA busy_timeout=5000")
+        
         await self._connection.executescript(SCHEMA)
         await self._connection.commit()
-        print(f"[DB] Connected to {self.db_path}")
+        print(f"[DB] Connected to {self.db_path} (WAL mode enabled)")
     
     async def close(self):
         """Close database connection"""
