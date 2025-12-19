@@ -2052,17 +2052,21 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                     await manager.broadcast(chat_msg)
             except json.JSONDecodeError:
                 continue
+            except WebSocketDisconnect:
+                raise
             except Exception as e:
                 print(f"[WS MSG ERROR] {nickname}: {e}")
-                # Don't let one message crash the socket
+                # For safety in production, break the loop on unknown exceptions 
+                # to prevent infinite error logging.
                 try:
                     await manager.send_personal(json.dumps({
                         "type": "error",
-                        "content": "[SYSTEM ERROR] Internal processing error.",
+                        "content": "[SYSTEM ERROR] Connection closed due to an internal error.",
                         "timestamp": datetime.now().isoformat()
                     }), nickname)
                 except:
                     pass
+                break
                 
     except WebSocketDisconnect:
         manager.cleanup_client_state(nickname)
