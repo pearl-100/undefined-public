@@ -41,7 +41,7 @@ cp env.example .env
 
 # Edit .env file
 SERVER_API_KEY=your-api-key-here
-SERVER_DEFAULT_MODEL=groq/llama-3.3-70b-versatile
+SERVER_DEFAULT_MODEL=gemini/gemini-3-flash-preview
 GIT_AUTO_PUSH=false
 ```
 
