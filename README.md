@@ -41,7 +41,7 @@ cp env.example .env
 
 # Edit .env file
 SERVER_API_KEY=your-api-key-here
-SERVER_DEFAULT_MODEL=groq/llama-3.3-70b-versatile
+SERVER_DEFAULT_MODEL=gemini/gemini-3-flash-preview
 GIT_AUTO_PUSH=false
 ```
 
@@ -119,7 +119,7 @@ These values are read from your `.env` file via `python-dotenv` (see `env.exampl
 | Variable | Description | Code default (if unset) | Recommended (env.example / Quick Start) |
 |----------|-------------|--------------------------|------------------------------------------|
 | `SERVER_API_KEY` | Server API key for free/guest users | (empty) | `your-api-key-here` |
-| `SERVER_DEFAULT_MODEL` | Default AI model for free/guest users | `gemini-2.5-flash` | `groq/llama-3.3-70b-versatile` |
+| `SERVER_DEFAULT_MODEL` | Default AI model for free/guest users | `gemini-2.5-flash` | `gemini-3-flash-preview` |
 | `GIT_AUTO_PUSH` | Auto backup Git push at midnight | `false` | `false` |
 | `ADMIN_UUIDS` | Admin UUIDs (comma separated) | (empty) | (empty) |
 | `BMC_WEBHOOK_SECRET` | Buy Me a Coffee webhook secret | (empty) | (empty) |
