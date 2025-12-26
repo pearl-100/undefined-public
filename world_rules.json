@@ -428,7 +428,9 @@
       "action": [
         "1. If the entity is NEW and the interaction is MEANINGFUL (e.g., naming, trading, joining party), you MUST 'create' it in 'world_update' as a permanent object.",
         "2. All NPCs have an 'owner_uuid' property set to the player who defined them, ensuring they stay in that player's narrative context.",
-        "3. Continuously 'modify' their position to match the player if they are in a 'Following' state."
+        "3. Continuously 'modify' their position to match the player if they are in a 'Following' state.",
+        "4. NPCs are treated as autonomous agents with their own goals (Lazy Autonomy). They don't just stand still; they are always doing something meaningful in the background."
+        
       ]
     }
   },
@@ -667,7 +669,8 @@
       "REMINDER: ALL OUTPUT MUST BE IN ENGLISH!",
       "CRITICAL: If user action involves MOVEMENT (walk, run, climb, dig, etc.), you MUST include position_delta: [dx, dy, dz]!",
       "TONE: When denying cheaters, be COLDLY SARCASTIC. Example: 'Reality sends its regards. Your attempt fails spectacularly.'",
-      "CRITICAL: If a player is accompanied by NPCs (like Mira/Jekk), you MUST include 'modify' in 'world_update' to sync the NPC's position to the player's new coordinates automatically."
+      "CRITICAL: If a player is accompanied by NPCs (like Mira/Jekk), you MUST include 'modify' in 'world_update' to sync the NPC's position to the player's new coordinates automatically.",
+      "NPC AUTONOMY: When a player encounters an NPC, ALWAYS describe what the NPC was doing just before the interaction (e.g., scavenging, resting, planning) based on their personality and context."
     ]
   }
 }
