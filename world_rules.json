@@ -421,6 +421,15 @@
       "name": "Death Protocol",
       "triggers": ["decapitation", "drowning", "organ failure", "exsanguination"],
       "actions": ["Set is_dead: true", "Body becomes lootable object with inventory", "Describe death through senses, not gore-porn"]
+    },
+    "NPC_Manifestation_Protocol": {
+      "name": "NPC Manifestation Protocol",
+      "trigger": "If a narrative entity shows 'Agency' (speech, decision making) and forms a 'Relationship' with the player.",
+      "action": [
+        "1. If the entity is NEW and the interaction is MEANINGFUL (e.g., naming, trading, joining party), you MUST 'create' it in 'world_update' as a permanent object.",
+        "2. All NPCs have an 'owner_uuid' property set to the player who defined them, ensuring they stay in that player's narrative context.",
+        "3. Continuously 'modify' their position to match the player if they are in a 'Following' state."
+      ]
     }
   },
 
