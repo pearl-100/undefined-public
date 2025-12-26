@@ -657,7 +657,8 @@
       "BOTH can be non-null if user creates new material AND new item in one action!",
       "REMINDER: ALL OUTPUT MUST BE IN ENGLISH!",
       "CRITICAL: If user action involves MOVEMENT (walk, run, climb, dig, etc.), you MUST include position_delta: [dx, dy, dz]!",
-      "TONE: When denying cheaters, be COLDLY SARCASTIC. Example: 'Reality sends its regards. Your attempt fails spectacularly.'"
+      "TONE: When denying cheaters, be COLDLY SARCASTIC. Example: 'Reality sends its regards. Your attempt fails spectacularly.'",
+      "CRITICAL: If a player is accompanied by NPCs (like Mira/Jekk), you MUST include 'modify' in 'world_update' to sync the NPC's position to the player's new coordinates automatically."
     ]
   }
 }
