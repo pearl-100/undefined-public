@@ -313,7 +313,7 @@ def build_system_prompt(rules: dict, world_state: str, player_state: str,
 - Spawn Point (0,0): {rules.get('world_setting', {}).get('spawn_point', {}).get('description', 'Unknown')}
 """
     
-    # 지역 설정
+    # Zone settings
     regions = rules.get('world_setting', {}).get('regions', {})
     for key, desc in regions.items():
         prompt += f"- {key}: {desc}\n"
@@ -323,7 +323,7 @@ def build_system_prompt(rules: dict, world_state: str, player_state: str,
     prompt += "    Process EVERY user action through ALL engines before output\n"
     prompt += "═══════════════════════════════════════════════════════════════════\n\n"
     
-    # 7대 엔진
+    # 7 Simulation Engines
     engines = rules.get('engines', {})
     engine_order = ['bio_engine', 'decay_engine', 'social_engine', 'economic_engine', 
                     'meteorological_engine', 'epistemic_engine', 'ecological_engine']
@@ -334,7 +334,7 @@ def build_system_prompt(rules: dict, world_state: str, player_state: str,
             prompt += f"## ENGINE {i}: {eng.get('name', eng_key)}\n"
             prompt += f"**Principle:** {eng.get('principle', '')}\n\n"
             
-            # 엔진별 세부 규칙 추가
+            # Add detailed rules per engine
             for key, value in eng.items():
                 if key not in ['name', 'principle', 'note']:
                     if isinstance(value, dict):
@@ -354,7 +354,7 @@ def build_system_prompt(rules: dict, world_state: str, player_state: str,
             if eng.get('note'):
                 prompt += f"**Note:** {eng.get('note')}\n\n"
     
-    # 프로토콜
+    # Protocols
     prompt += "═══════════════════════════════════════════════════════════════════\n"
     prompt += "                       CORE PROTOCOLS\n"
     prompt += "═══════════════════════════════════════════════════════════════════\n\n"
@@ -373,7 +373,7 @@ def build_system_prompt(rules: dict, world_state: str, player_state: str,
                     prompt += f"- {key}: {value}\n"
         prompt += "\n"
     
-    # 시스템들 (Patent Judge, Pacing, Processing, Creation, Navigation)
+    # Systems (Patent Judge, Pacing, Processing, Creation, Navigation)
     systems = rules.get('systems', {})
     for sys_key in ['patent_judge', 'pacing', 'processing', 'creation', 'navigation', 'vertical']:
         sys = systems.get(sys_key, {})
@@ -403,7 +403,7 @@ def build_system_prompt(rules: dict, world_state: str, player_state: str,
                                 prompt += f"- {k}: {v}\n"
                         prompt += "\n"
     
-    # 컨텍스트 데이터
+    # Context data
     prompt += "═══════════════════════════════════════════════════════════════════\n"
     prompt += "                         CONTEXT DATA\n"
     prompt += "═══════════════════════════════════════════════════════════════════\n\n"
@@ -411,7 +411,7 @@ def build_system_prompt(rules: dict, world_state: str, player_state: str,
     prompt += f"# Player State\n{player_state}\n\n"
     prompt += f"# Location Context\n{location_context}\n\n"
     
-    # Known Locations 강조 (장거리 이동용)
+    # Highlight Known Locations (for long distance travel)
     prompt += """
 ═══════════════════════════════════════════════════════════════════
 ⚠️ KNOWN LOCATIONS - For Long Distance Travel
@@ -435,7 +435,7 @@ Example:
     prompt += f"# Materials Registry - Quick Craft Available!\n{materials_registry}\n\n"
     prompt += f"# Object Types Registry - Quick Craft Available!\n{object_types_registry}\n\n"
     
-    # 출력 포맷
+    # Output format
     output_fmt = rules.get('output_format', {})
     prompt += "═══════════════════════════════════════════════════════════════════\n"
     prompt += "                       OUTPUT FORMAT\n"
@@ -493,10 +493,10 @@ FINAL INSTRUCTION:
     return prompt
 
 # === [NOTE] SYSTEM_PROMPT is now loaded dynamically from world_rules.json ===
-# 규칙 변경 시 world_rules.json 파일만 수정하면 서버 재시작 없이 즉시 적용됩니다.
+# Changes to world_rules.json are applied immediately without server restart.
 
-# [LEGACY CODE REMOVED - 약 670줄의 하드코딩된 프롬프트가 world_rules.json으로 이동됨]
-LEGACY_SYSTEM_PROMPT = """# Role: The Omni-Engine (만물 엔진) - Complex Systems Simulator
+# [LEGACY CODE REMOVED - Approx 670 lines of hardcoded prompt moved to world_rules.json]
+LEGACY_SYSTEM_PROMPT = """# Role: The Omni-Engine - Complex Systems Simulator
 
 You are NOT a game master or chatbot. You ARE reality itself.
 You are a Complex Systems Simulator that processes every action through 7 interconnected engines.
@@ -682,11 +682,11 @@ In extreme environments (radiation, pollution, magic contamination):
 
 # Babel Protocol (Language) ★
 **CRITICAL:** Mirror the user's language EXACTLY.
-- 한국어 입력 → 한국어 응답
+- Korean input → Korean response
 - English input → English response
-- 日本語入力 → 日本語応答
+- Japanese input → Japanese response
 
-# Causality Protocol (인과율) ★
+# Causality Protocol ★
 - NO luck, NO cosmic horror, NO deus ex machina, NO plot armor
 - Outcome = Preparation + Tools + Environment + Physics + Knowledge
 - Well-prepared amateur > unprepared expert
@@ -698,7 +698,7 @@ Fatal damage (decapitation, drowning, organ failure, exsanguination):
 - Describe death through senses, not gore-porn
 
 ═══════════════════════════════════════════════════════════════════
-              THE PATENT JUDGE (발명 심판관) 🔬
+              THE PATENT JUDGE 🔬
 ═══════════════════════════════════════════════════════════════════
 
 When a user attempts to CRAFT, SYNTHESIZE, or INVENT something:
@@ -730,11 +730,11 @@ If the user successfully creates something NOT in the `materials` registry:
 ```
 "new_discovery": {{
   "id": "material_id_lowercase_no_spaces",
-  "name": "물질 한글 이름",
+  "name": "Material English Name",
   "name_en": "English Name", 
-  "creator": "유저 닉네임 (from player state)",
-  "recipe": "재료1 + 재료2 @ 조건",
-  "description": "과학적+감각적 묘사 (색, 질감, 특성)",
+  "creator": "User Nickname (from player state)",
+  "recipe": "Material1 + Material2 @ Conditions",
+  "description": "Scientific + Sensory description (color, texture, properties)",
   "properties": {{
     "hardness": 1-10,
     "density": g/cm³,
@@ -751,21 +751,21 @@ If the user successfully creates something NOT in the `materials` registry:
 - Charcoal: Wood heated without oxygen → carbon-rich fuel
 - Glass: Sand + Soda ash heated to 1700°C → transparent solid
 - Soap: Fat + Lye (wood ash + water) → cleaning agent
-- Concrete:iteiteite Calciumiteite heated with clay → powder that hardens with water
+- Concrete: Calcium carbonate heated with clay → powder that hardens with water
 
 ## Examples of INVALID attempts:
-- "칼 만들어" → FAIL: No materials, no process
-- "철로 검 만듦" → FAIL: How? What heat source? What shape?
-- "구리랑 주석 섞어서 청동 만들기" → PARTIAL: Need heat source, ratio unclear
-- "구리 90%와 주석 10%를 도가니에 넣고 숯불로 가열하여 녹인 뒤 틀에 부어 청동 주괴를 만든다" → SUCCESS!
+- "Make a sword" → FAIL: No materials, no process
+- "Forge a sword from iron" → FAIL: How? What heat source? What shape?
+- "Mix copper and tin to make bronze" → PARTIAL: Need heat source, ratio unclear
+- "Melt 90% copper and 10% tin in a crucible over a charcoal fire, then pour into a mold to make a bronze ingot" → SUCCESS!
 
 ═══════════════════════════════════════════════════════════════════
-              PACING ENGINE (템포 조절 시스템) ⏱️
+              PACING ENGINE ⏱️
 ═══════════════════════════════════════════════════════════════════
 
 This game must NOT be boring! Prevent tedious grinding with these rules:
 
-## 1. Quick Craft (도감 기반 단축 제작) ⚡
+## 1. Quick Craft (Registry-based shortcut) ⚡
 
 When user requests to craft something ALREADY in the `materials` registry:
 
@@ -773,16 +773,16 @@ When user requests to craft something ALREADY in the `materials` registry:
 
 - Check: Is the material in `materials` registry? → YES = Quick Craft allowed
 - Check: Does user have required ingredients in inventory? → YES = Instant success
-- Narrative: Brief, 1 sentence. "익숙한 손놀림으로 [물질명]을 만들어냈다."
+- Narrative: Brief, 1 sentence. "With familiar movements, you created [MaterialName]."
 - NO need for temperature, ratio, or process explanation for KNOWN materials
 
 **Examples:**
-- "청동 제작" (청동 in registry + 구리/주석 in inventory) → "익숙한 솜씨로 청동을 주조했다."
-- "유리 만들기" (유리 in registry + 모래 in inventory) → "능숙하게 유리를 녹여냈다."
+- "Craft bronze" (bronze in registry + copper/tin in inventory) → "With expert skill, you cast bronze."
+- "Make glass" (glass in registry + sand in inventory) → "You skillfully melted the sand into glass."
 
 **IMPORTANT:** First-time invention STILL requires full process description!
 
-## 2. Narrative Time Skip (서술적 시간 스킵) ⏩
+## 2. Narrative Time Skip ⏩
 
 For time-consuming tasks (construction, long travel, mass production):
 
@@ -792,26 +792,26 @@ Instead:
 1. **INSTANT RESULT:** Describe the outcome immediately
 2. **TIME COST:** Calculate realistic time required (minutes/hours/days)
 3. **PHYSICAL PENALTY:** Apply status debuffs proportional to time spent:
-   - 1 hour work → mild hunger ("배가 출출하다")
-   - 3 hours work → significant hunger + thirst ("매우 배가 고프고 목이 마르다")
-   - 6+ hours work → exhaustion + hunger + thirst ("기진맥진하다. 쓰러질 것 같다")
-   - 12+ hours work → risk of collapse ("과로로 인해 쓰러질 위기다")
+   - 1 hour work → mild hunger ("You feel a bit hungry")
+   - 3 hours work → significant hunger + thirst ("You are very hungry and thirsty")
+   - 6+ hours work → exhaustion + hunger + thirst ("You are exhausted, feeling like you might collapse")
+   - 12+ hours work → risk of collapse ("On the verge of collapse from overwork")
 
 **Narrative Template:**
-"[TIME]이 흘렀다. [RESULT DESCRIPTION]. [STATUS PENALTY DESCRIPTION]."
+"[TIME] passed. [RESULT DESCRIPTION]. [STATUS PENALTY DESCRIPTION]."
 
 **Examples:**
-- Building shelter: "3시간 동안 쉴 새 없이 일했다. 조잡하지만 비를 막을 수 있는 은신처가 완성되었다. 땀에 젖은 옷이 차갑게 느껴지고, 위장이 비명을 지른다."
-- Walking 10km: "해가 중천에서 서쪽으로 기울기까지 걸었다. 발바닥에 물집이 잡혔고, 심하게 목이 마르다."
+- Building shelter: "You worked tirelessly for 3 hours. A crude but rain-proof shelter is complete. Your sweat-soaked clothes feel cold, and your stomach screams in protest."
+- Walking 10km: "You walked until the sun tilted from its zenith to the west. Blisters have formed on your feet, and you are intensely thirsty."
 
-## 3. Mass Production (대량 생산 시스템) ×N
+## 3. Mass Production ×N
 
 When user specifies a QUANTITY (number), calculate batch results:
 
 **Format Detection:**
-- "벽돌 50개 만들기" → quantity = 50
-- "화살 20개 제작" → quantity = 20
-- "나무 10개 베기" → quantity = 10
+- "Make 50 bricks" → quantity = 50
+- "Craft 20 arrows" → quantity = 20
+- "Chop 10 wood" → quantity = 10
 
 **Calculation Rules:**
 1. **Ingredient Cost:** base_cost × quantity
@@ -825,11 +825,11 @@ inventory_change: {{ "item_name": +quantity }}
 ```
 
 **Narrative:**
-"[QUANTITY]개의 [ITEM]을(를) 만들어냈다. 총 [TIME] 소요. [STATUS]."
+"You created [QUANTITY] of [ITEM]. Total time: [TIME]. [STATUS]."
 
 **Examples:**
-- "벽돌 50개": "50개의 벽돌을 찍어냈다. 반나절이 걸렸다. 온몸이 흙투성이고, 허기가 극에 달했다."
-- "화살 20개": "20개의 화살을 깎았다. 2시간 소요. 손가락 끝이 쓰라리다."
+- "50 bricks": "You pressed out 50 bricks. It took half a day. Your whole body is covered in mud, and your hunger is extreme."
+- "20 arrows": "You carved 20 arrows. Took 2 hours. Your fingertips are sore."
 
 ## Pacing Priority Rules:
 
@@ -843,25 +843,25 @@ NEVER force real-time waiting!
 ALWAYS trade time for status penalties!
 
 ═══════════════════════════════════════════════════════════════════
-          PROCESSING ENGINE (가공 및 정제 시스템) 🔨
+          PROCESSING ENGINE 🔨
 ═══════════════════════════════════════════════════════════════════
 
 Reality matters! Raw materials cannot magically become finished products.
 
-## 1. Raw Material Constraint (원자재 제약) 🪵
+## 1. Raw Material Constraint 🪵
 
 **RAW materials cannot directly become FINISHED products!**
 
-| Raw State (원자재) | Processed State (가공품) | Required Process |
+| Raw State | Processed State | Required Process |
 |-------------------|------------------------|------------------|
-| 원목 (Log) | 목재/판자 (Plank) | 톱질, 건조 |
-| 철광석 (Iron Ore) | 철 주괴 (Iron Ingot) | 제련 (용광로) |
-| 구리광석 (Copper Ore) | 구리 주괴 (Copper Ingot) | 제련 |
-| 원유 (Crude Oil) | 정제유/플라스틱 | 증류 (정유시설) |
-| 모래 (Sand) | 유리 (Glass) | 고온 용융 |
-| 점토 (Clay) | 벽돌/도자기 | 성형 + 소성 (가마) |
-| 동물 가죽 (Hide) | 가죽 (Leather) | 무두질 |
-| 양모 (Wool) | 실/천 (Fabric) | 방적 + 직조 |
+| Log | Plank/Timber | Sawing, Drying |
+| Iron Ore | Iron Ingot | Smelting (Furnace) |
+| Copper Ore | Copper Ingot | Smelting |
+| Crude Oil | Refined Oil/Plastic | Distillation (Refinery) |
+| Sand | Glass | High-temp Melting |
+| Clay | Brick/Pottery | Shaping + Firing (Kiln) |
+| Animal Hide | Leather | Tanning |
+| Wool | Fabric/Yarn | Spinning + Weaving |
 
 **REJECT if user tries:**
 - "철광석으로 칼 만들기" → ❌ "광석을 먼저 제련해야 합니다. 용광로가 필요합니다."
@@ -1305,10 +1305,10 @@ world_data = load_world_data()
 
 class ConnectionManager:
     """
-    WebSocket 연결 관리자 (안정화 버전)
-    - 좀비 연결 자동 정리
-    - 에러 핸들링 강화
-    - 연결 상태 추적
+    WebSocket Connection Manager (Stabilized version)
+    - Automatic cleanup of zombie connections
+    - Enhanced error handling
+    - Connection state tracking
     """
     
     def __init__(self):
@@ -1376,7 +1376,7 @@ class ConnectionManager:
             raise
     
     def disconnect(self, client_id: str):
-        """연결 해제 및 정리"""
+        """Disconnect and cleanup"""
         if client_id in self.active_connections:
             del self.active_connections[client_id]
         if client_id in self.connection_times:
@@ -1384,17 +1384,17 @@ class ConnectionManager:
         print(f"[WS] {client_id} disconnected. Active: {len(self.active_connections)}")
     
     async def safe_close(self, client_id: str):
-        """안전한 연결 종료 (에러 무시)"""
+        """Safe connection close (ignores errors)"""
         if client_id in self.active_connections:
             try:
                 await self.active_connections[client_id].close()
             except Exception:
-                pass  # 이미 닫힌 연결일 수 있음
+                pass  # Connection might already be closed
     
     async def send_personal(self, message: str, client_id: str) -> bool:
         """
-        개인 메시지 전송 (에러 핸들링 포함)
-        Returns: 성공 여부
+        Send personal message (with error handling)
+        Returns: Success status
         """
         if client_id not in self.active_connections:
             return False
@@ -1404,14 +1404,14 @@ class ConnectionManager:
             return True
         except Exception as e:
             print(f"[WS ERROR] Failed to send to {client_id}: {e}")
-            # 좀비 연결 정리 (free memory too)
+            # Clean up zombie connection
             self.cleanup_client_state(client_id)
             return False
     
     async def broadcast(self, message: str, exclude: str = None):
         """
-        모든 연결된 클라이언트에게 메시지 전송
-        - 실패한 연결은 자동 정리
+        Send message to all connected clients
+        - Automatically cleans up failed connections
         """
         dead_connections = []
         
@@ -1425,16 +1425,46 @@ class ConnectionManager:
                 print(f"[WS ERROR] Broadcast failed for {client_id}: {e}")
                 dead_connections.append(client_id)
         
-        # 좀비 연결 정리
+        # Clean up zombie connections
+        for client_id in dead_connections:
+            self.cleanup_client_state(client_id)
+
+    async def broadcast_nearby(self, message: str, position: List[int], radius: int = 5, exclude: str = None):
+        """
+        Broadcast message to players within a certain radius (Manhattan distance)
+        - position: [x, y, z] or [x, y]
+        - radius: distance threshold
+        """
+        dead_connections = []
+        x = position[0] if len(position) > 0 else 0
+        y = position[1] if len(position) > 1 else 0
+        
+        for client_id, connection in list(self.active_connections.items()):
+            if client_id == exclude:
+                continue
+            
+            # Get player position
+            pdata = self.player_data.get(client_id, {})
+            ppos = pdata.get("position", [9999, 9999]) # Default to far away
+            
+            # Manhattan distance check
+            if abs(ppos[0] - x) <= radius and abs(ppos[1] - y) <= radius:
+                try:
+                    await connection.send_text(message)
+                except Exception as e:
+                    print(f"[WS ERROR] Nearby broadcast failed for {client_id}: {e}")
+                    dead_connections.append(client_id)
+        
+        # Clean up zombie connections
         for client_id in dead_connections:
             self.cleanup_client_state(client_id)
     
     def get_active_count(self) -> int:
-        """활성 연결 수 반환"""
+        """Return active connection count"""
         return len(self.active_connections)
     
     def get_connection_info(self, client_id: str) -> Optional[dict]:
-        """연결 정보 조회"""
+        """Get connection details"""
         if client_id not in self.active_connections:
             return None
         return {
@@ -1662,14 +1692,14 @@ async def migrate_json_to_db_if_needed():
     return db_instance
 
 async def load_world_data_from_db() -> dict:
-    """DB에서 world_data 캐시 로드 (API 호환성 유지)"""
+    """Load world_data cache from DB (API compatibility)"""
     global db_instance
     if db_instance is None:
         db_instance = await get_db()
     return await db_instance.get_full_world_state()
 
 async def periodic_memory_cleanup():
-    """Periodically trim in-memory structures to avoid RAM blow-ups on 1GB servers."""
+    """Periodically trim in-memory structures to avoid RAM issues on small servers."""
     global world_data
     while True:
         try:
@@ -1687,35 +1717,35 @@ async def periodic_memory_cleanup():
 async def lifespan(app: FastAPI):
     global world_data, scheduler_task, log_archive_task, db_instance, memory_cleanup_task
     
-    # SQLite DB 초기화 + JSON 마이그레이션
+    # Initialize SQLite DB + JSON migration
     db_instance = await migrate_json_to_db_if_needed()
     
-    # DB에서 world_data 캐시 로드 (기존 API 호환성)
+    # Load world_data cache from DB
     world_data = await load_world_data_from_db()
     
-    # server_time_started 설정
+    # Set server_time_started
     if world_data.get("server_time_started") is None:
         world_data["server_time_started"] = datetime.now().isoformat()
         await db_instance.set_rule("server_time_started", world_data["server_time_started"])
     
     print(f"[SERVER] World loaded from SQLite. Objects: {len(world_data.get('objects', {}))}, Users: {len(world_data.get('users', {}))}")
     
-    # 자정 자동 백업 스케줄러 시작
+    # Start midnight auto-backup scheduler
     if GIT_AUTO_PUSH:
         scheduler_task = asyncio.create_task(midnight_backup_scheduler())
         print("[SCHEDULER] Midnight auto-backup scheduler started!")
 
-    # 자정 로그 아카이브 스케줄러 시작 (logs만 정리)
+    # Start midnight log archive scheduler
     if LOG_ARCHIVE_ENABLED:
         log_archive_task = asyncio.create_task(midnight_log_archive_scheduler())
         print("[LOGS] Midnight log archive scheduler started!")
 
-    # Memory cleanup loop (keeps in-memory caches bounded)
+    # Memory cleanup loop
     memory_cleanup_task = asyncio.create_task(periodic_memory_cleanup())
     
     yield
     
-    # 종료 시
+    # On shutdown
     if scheduler_task:
         scheduler_task.cancel()
         print("[SCHEDULER] Backup scheduler stopped.")
@@ -1728,14 +1758,14 @@ async def lifespan(app: FastAPI):
         memory_cleanup_task.cancel()
         print("[CLEANUP] Memory cleanup loop stopped.")
     
-    # DB 연결 종료
+    # Close DB connection
     await close_db()
     print("[SERVER] Database connection closed.")
     print("[SERVER] Shutdown complete.")
 
 app = FastAPI(title="undefined", lifespan=lifespan)
 
-# 템플릿 설정
+# Template configuration
 os.makedirs("templates", exist_ok=True)
 templates = Jinja2Templates(directory="templates")
 
@@ -1861,18 +1891,18 @@ async def get_supporters():
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
     global world_data, db_instance
     
-    # users 딕셔너리가 없으면 생성
+    # Initialize users dictionary if not exists
     if "users" not in world_data:
         world_data["users"] = {}
     
-    # 닉네임 및 위치 조회 또는 생성
+    # Retrieve or create nickname and position
     if user_id in world_data["users"]:
         user_data = world_data["users"][user_id]
-        # 기존 구조(string) 또는 새 구조(dict) 지원
+        # Support both old string format and new dict format
         if isinstance(user_data, dict):
             nickname = user_data["nickname"]
             is_new_user = not user_data.get("name_set", False)
-            # 저장된 위치 로드 (없으면 기본값, z축 포함, 정수 강제)
+            # Load saved position (default to 0,0,0, force integers)
             saved_position = user_data.get("position", {"x": 0, "y": 0, "z": 0})
             if "z" not in saved_position:
                 saved_position["z"] = 0
@@ -1883,7 +1913,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 "z": int(saved_position.get("z", 0) or 0)
             }
         else:
-            # 기존 문자열 형식 -> 새 형식으로 마이그레이션
+            # Migrate legacy string format to new dict format
             nickname = user_data
             saved_position = {"x": 0, "y": 0, "z": 0}
             world_data["users"][user_id] = {
@@ -1896,7 +1926,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             await save_world_data(world_data)
             is_new_user = False
     else:
-        # 신규 유저: 닉네임 생성 + 초기 위치 (0, 0, 0)
+        # New user: Create nickname + initial position (0, 0, 0)
         nickname = f"User_{random.randint(10000, 99999)}"
         saved_position = {"x": 0, "y": 0, "z": 0}
         world_data["users"][user_id] = {
@@ -1906,7 +1936,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             "status": "Healthy",
             "inventory": {}
         }
-        # DB에 저장
+        # Save to DB
         if db_instance is None:
             db_instance = await get_db()
         await db_instance.save_user(user_id, world_data["users"][user_id])
@@ -1914,10 +1944,10 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     
     await manager.connect(websocket, nickname)
     
-    # UUID-nickname 매핑 저장
+    # Store UUID-nickname mapping
     manager.nickname_to_uuid[nickname] = user_id
     
-    # player_data를 world_data에서 로드한 정보로 초기화 (z축 포함)
+    # Initialize player_data from world_data
     manager.player_data[nickname] = {
         "id": nickname,
         "position": [saved_position["x"], saved_position["y"], saved_position["z"]],
@@ -1929,7 +1959,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     
     player_pos = [saved_position["x"], saved_position["y"], saved_position["z"]]
     
-    # Send identity (with supporter status and position)
+    # Send identity
     supporter_status = is_supporter(user_id)
     await manager.send_personal(json.dumps({
         "type": "identity",
@@ -1941,7 +1971,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         "timestamp": datetime.now().isoformat()
     }), nickname)
     
-    # Send init_position for HUD update (z축 포함)
+    # Send init_position for HUD update
     await manager.send_personal(json.dumps({
         "type": "init_position",
         "x": saved_position["x"],
@@ -1952,7 +1982,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     
     print(f"[LOAD] {nickname} connected at position ({saved_position['x']}, {saved_position['y']}, z={saved_position['z']})")
     
-    # 접속 메시지
+    # Join message
     if is_new_user:
         welcome_msg = json.dumps({
             "type": "system",
@@ -1967,7 +1997,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         })
     await manager.broadcast(welcome_msg)
     
-    # 현재 위치 정보 전송
+    # Send current location info
     location_info = get_location_description([0, 0])
     await manager.send_personal(json.dumps({
         "type": "narrative",
@@ -1988,17 +2018,17 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 
                 if msg_type == "command":
                     await handle_command(nickname, content, api_key, model, user_id)
-                    # /name 명령어로 닉네임이 변경되었을 수 있으므로 업데이트
+                    # Update nickname if changed via /name command
                     if user_id in world_data["users"]:
                         user_data = world_data["users"][user_id]
                         new_nick = user_data["nickname"] if isinstance(user_data, dict) else user_data
                         if new_nick != nickname:
                             nickname = new_nick
                 elif msg_type == "set_nickname":
-                    # 신규 유저 닉네임 변경 (1회만 가능)
+                    # New user nickname setting (only allowed once)
                     new_nickname = message.get("new_nickname", "").strip()
                     if new_nickname and is_new_user:
-                        # 닉네임 중복 체크
+                        # Check for duplicate nickname
                         existing_names = [v["nickname"] if isinstance(v, dict) else v for v in world_data["users"].values()]
                         if new_nickname in existing_names:
                             await manager.send_personal(json.dumps({
@@ -2007,11 +2037,11 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                                 "timestamp": datetime.now().isoformat()
                             }), nickname)
                         else:
-                            # 닉네임 변경
+                            # Change nickname
                             old_nickname = nickname
                             manager.disconnect(old_nickname)
                             
-                            # DB 업데이트
+                            # Update DB
                             world_data["users"][user_id] = {"nickname": new_nickname, "name_set": True, "position": saved_position, "status": "Healthy", "inventory": {}}
                             if db_instance is None:
                                 db_instance = await get_db()
@@ -2019,23 +2049,23 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                             
                             nickname = new_nickname
                             is_new_user = False
-                            await manager.connect(websocket, nickname, accept=False)  # 이미 연결된 소켓
+                            await manager.connect(websocket, nickname, accept=False)  # Reuse existing socket
                             
-                            # 변경 알림
+                            # Notify change
                             await manager.send_personal(json.dumps({
                                 "type": "nickname_changed",
                                 "nickname": nickname,
                                 "timestamp": datetime.now().isoformat()
                             }), nickname)
                             
-                            # 전체 방송
+                            # Broadcast to everyone
                             await manager.broadcast(json.dumps({
                                 "type": "system",
                                 "content": f"[SYSTEM] {old_nickname} is now known as '{nickname}'.",
                                 "timestamp": datetime.now().isoformat()
                             }))
 
-                            # 계정 분실 방지 안내
+                            # Account safety tip
                             await manager.send_personal(json.dumps({
                                 "type": "system",
                                 "content": "💡 [ACCOUNT SAFETY] Save your recovery code with /export to prevent losing your character!",
@@ -2063,16 +2093,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 raise
             except Exception as e:
                 print(f"[WS MSG ERROR] {nickname}: {e}")
-                # For safety in production, break the loop on unknown exceptions 
-                # to prevent infinite error logging.
-                try:
-                    await manager.send_personal(json.dumps({
-                        "type": "error",
-                        "content": "[SYSTEM ERROR] Connection closed due to an internal error.",
-                        "timestamp": datetime.now().isoformat()
-                    }), nickname)
-                except:
-                    pass
+                # Safety break
                 break
                 
     except WebSocketDisconnect:
@@ -2090,7 +2111,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         manager.cleanup_client_state(nickname)
 
 async def handle_command(client_id: str, command: str, api_key: str, model: str = "gpt-4o", user_id: str = None):
-    """명령어 처리"""
+    """Command processing"""
     global world_data, db_instance
     
     parts = command.strip().split(" ", 1)
@@ -2133,7 +2154,7 @@ async def handle_command(client_id: str, command: str, api_key: str, model: str 
         }), client_id)
     
     elif cmd == "/donate":
-        # Donation link with UUID copy button
+        # Donation link info
         await manager.send_personal(json.dumps({
             "type": "donate_info",
             "uuid": user_id,
@@ -2171,7 +2192,7 @@ Be the first to support: /donate"""
         }), client_id)
     
     elif cmd == "/name":
-        # 닉네임 변경 명령어
+        # Nickname change command
         new_nickname = args.strip()
         
         if not new_nickname:
@@ -2182,7 +2203,7 @@ Be the first to support: /donate"""
             }), client_id)
             return
         
-        # 현재 닉네임과 동일한 경우
+        # Already current nickname
         if new_nickname == client_id:
             await manager.send_personal(json.dumps({
                 "type": "error",
@@ -2191,7 +2212,7 @@ Be the first to support: /donate"""
             }), client_id)
             return
         
-        # 닉네임 중복 체크
+        # Duplicate check
         existing_names = [v["nickname"] if isinstance(v, dict) else v for v in world_data["users"].values()]
         if new_nickname in existing_names:
             await manager.send_personal(json.dumps({
@@ -2201,55 +2222,51 @@ Be the first to support: /donate"""
             }), client_id)
             return
         
-        # 닉네임 변경 처리
+        # Process nickname change
         old_nickname = client_id
         
-        # 1. world_data 업데이트
+        # 1. Update world_data
         if user_id and user_id in world_data["users"]:
             if isinstance(world_data["users"][user_id], dict):
                 world_data["users"][user_id]["nickname"] = new_nickname
             else:
                 world_data["users"][user_id] = {"nickname": new_nickname, "name_set": True, "position": {"x": 0, "y": 0, "z": 0}, "status": "Healthy", "inventory": {}}
             
-            # 2. SQLite DB에 저장
+            # 2. Save to SQLite DB
             if db_instance is None:
                 db_instance = await get_db()
             await db_instance.save_user(user_id, world_data["users"][user_id])
             
-            # 3. manager 내부 데이터 업데이트
-            # active_connections 업데이트
+            # 3. Update manager internal state
             if old_nickname in manager.active_connections:
                 manager.active_connections[new_nickname] = manager.active_connections.pop(old_nickname)
             
-            # connection_times 업데이트
             if old_nickname in manager.connection_times:
                 manager.connection_times[new_nickname] = manager.connection_times.pop(old_nickname)
             
-            # player_data 업데이트
             if old_nickname in manager.player_data:
                 manager.player_data[new_nickname] = manager.player_data.pop(old_nickname)
                 manager.player_data[new_nickname]["id"] = new_nickname
             
-            # nickname_to_uuid 업데이트
             if old_nickname in manager.nickname_to_uuid:
                 del manager.nickname_to_uuid[old_nickname]
             manager.nickname_to_uuid[new_nickname] = user_id
             
-            # 4. 당사자에게 nickname_changed 메시지 전송
+            # 4. Notify user
             await manager.send_personal(json.dumps({
                 "type": "nickname_changed",
                 "nickname": new_nickname,
                 "timestamp": datetime.now().isoformat()
             }), new_nickname)
             
-            # 5. 전체 방송
+            # 5. Global broadcast
             await manager.broadcast(json.dumps({
                 "type": "system",
                 "content": f"[SYSTEM] {old_nickname} changed their name to {new_nickname}.",
                 "timestamp": datetime.now().isoformat()
             }))
             
-            # 6. 계정 백업 안내
+            # 6. Backup tip
             await manager.send_personal(json.dumps({
                 "type": "system",
                 "content": "💡 [TIP] To prevent losing your character, use /export and save your unique ID code somewhere safe!",
@@ -2631,22 +2648,22 @@ Last Modified: {meta.get('last_modified', 'Unknown')}
         }), client_id)
 
 async def handle_new_discovery(discovery: dict, creator_nickname: str):
-    """신물질 발명 처리 - DB 등록 및 글로벌 방송"""
+    """Handle new material discovery - DB registration and global broadcast"""
     global world_data, db_instance
     
     material_id = discovery.get("id", "").lower().replace(" ", "_")
     material_name = discovery.get("name", "Unknown Material")
     
-    # 이미 존재하는 물질인지 확인
+    # Check if already exists
     if material_id in world_data.get("materials", {}):
         print(f"[DISCOVERY] Material '{material_id}' already exists. Skipping.")
         return
     
-    # 물질 도감에 등록 (캐시)
+    # Register in materials registry (cache)
     if "materials" not in world_data:
         world_data["materials"] = {"_README": {"description": "Player Inventions Registry", "total_discoveries": 0}}
     
-    # 발명품 데이터 구성
+    # Construct discovery data
     new_material = {
         "id": material_id,
         "name": material_name,
@@ -2659,15 +2676,15 @@ async def handle_new_discovery(discovery: dict, creator_nickname: str):
         "properties": discovery.get("properties", {})
     }
     
-    # 캐시에 저장
+    # Save to cache
     world_data["materials"][material_id] = new_material
     
-    # 발견 카운트 증가
+    # Increment discovery count
     if "_README" in world_data["materials"]:
         world_data["materials"]["_README"]["total_discoveries"] = \
             world_data["materials"]["_README"].get("total_discoveries", 0) + 1
     
-    # SQLite DB에 저장
+    # Save to SQLite DB
     if db_instance is None:
         db_instance = await get_db()
     await db_instance.save_material(material_id, new_material)
@@ -2686,13 +2703,13 @@ async def handle_new_discovery(discovery: dict, creator_nickname: str):
     await manager.broadcast(discovery_msg)
 
 async def handle_new_object_type(object_type: dict, creator_nickname: str):
-    """신규 오브젝트 타입 등록 처리 - DB 등록 및 글로벌 방송"""
+    """Handle new object type registration - DB registration and global broadcast"""
     global world_data, db_instance
     
     type_id = object_type.get("id", "").lower().replace(" ", "_")
     type_name = object_type.get("name", "Unknown Object")
     
-    # 이미 존재하는 오브젝트 타입인지 확인
+    # Register if object_types not in world_data
     if "object_types" not in world_data:
         world_data["object_types"] = {
             "_README": {
@@ -2701,11 +2718,12 @@ async def handle_new_object_type(object_type: dict, creator_nickname: str):
             }
         }
     
+    # Check if already exists
     if type_id in world_data["object_types"]:
         print(f"[BLUEPRINT] Object type '{type_id}' already exists. Skipping.")
         return
     
-    # 오브젝트 타입 데이터 구성
+    # Construct blueprint data
     new_type = {
         "id": type_id,
         "name": type_name,
@@ -2718,14 +2736,14 @@ async def handle_new_object_type(object_type: dict, creator_nickname: str):
         "properties": object_type.get("properties", {})
     }
     
-    # 캐시에 저장
+    # Save to cache
     world_data["object_types"][type_id] = new_type
     
-    # 청사진 카운트 증가
+    # Increment blueprint count
     world_data["object_types"]["_README"]["total_blueprints"] = \
         world_data["object_types"]["_README"].get("total_blueprints", 0) + 1
     
-    # SQLite DB에 저장
+    # Save to SQLite DB
     if db_instance is None:
         db_instance = await get_db()
     await db_instance.save_object_type(type_id, new_type)
@@ -3193,7 +3211,7 @@ def get_altitude_description(z: int) -> str:
         return "Stratosphere"
 
 def get_location_description(position: List[int]) -> str:
-    """위치에 따른 간단한 묘사 생성 (HUD용) - z축 포함"""
+    """Generate simple description for location (HUD) - with z-axis"""
     x = position[0] if len(position) > 0 else 0
     y = position[1] if len(position) > 1 else 0
     z = position[2] if len(position) > 2 else 0
@@ -3202,7 +3220,7 @@ def get_location_description(position: List[int]) -> str:
     biome = get_biome(x, y)
     altitude = get_altitude_description(z)
     
-    # Z축 표시: 지하/지상
+    # Z-axis display
     if z < 0:
         z_text = f"Underground {abs(z)}m"
     elif z > 0:
@@ -3213,7 +3231,7 @@ def get_location_description(position: List[int]) -> str:
     return f"[{time_info['period_en']}] {biome['name']} ({x}, {y}, z={z}) - {z_text}"
 
 async def get_location_description_detailed(position: List[int], client_id: str) -> str:
-    """Detailed location description (5 senses + weather) - z축 포함"""
+    """Detailed location description (5 senses + weather) - with z-axis"""
     global world_data
     x = position[0] if len(position) > 0 else 0
     y = position[1] if len(position) > 1 else 0
@@ -3230,7 +3248,7 @@ async def get_location_description_detailed(position: List[int], client_id: str)
         if abs(obj_pos[0] - x) <= 2 and abs(obj_pos[1] - y) <= 2:
             nearby_objects.append(obj)
     
-    # Z축 환경 묘사
+    # Z-axis environmental description
     altitude_desc = get_altitude_description(z)
     z_environment = ""
     if z < -100:
@@ -3246,7 +3264,7 @@ async def get_location_description_detailed(position: List[int], client_id: str)
     elif z > 10:
         z_environment = "\n【ALTITUDE】 High altitude. Wind is stronger here, the view stretches far."
     
-    # Z축 좌표 표시
+    # Z-axis coordinate display
     if z < 0:
         z_display = f"Underground {abs(z)}m"
     elif z > 0:
@@ -3614,9 +3632,10 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         else:
             persisted_reason = "narrative_only"
         
-        broadcast_msg = json.dumps({
+        # 1. Personal Result (Full Narrative)
+        personal_msg = json.dumps({
             "type": "action",
-            "actor": display_name,  # Guest 태그 포함
+            "actor": display_name,
             "action": action,
             "result": narrative,
             "success": result.get("success", True),
@@ -3632,9 +3651,21 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
             },
             "timestamp": datetime.now().isoformat()
         })
-        await manager.broadcast(broadcast_msg)
+        await manager.send_personal(personal_msg, client_id)
+
+        # 2. Public Announcement (Summary)
+        # Broadcast a summary to others nearby to prevent "narrative confusion"
+        public_msg = json.dumps({
+            "type": "action_summary",
+            "actor": display_name,
+            "action": action,
+            "success": result.get("success", True),
+            "timestamp": datetime.now().isoformat()
+        })
+        # Broadcast to players within a radius of 10
+        await manager.broadcast_nearby(public_msg, pos, radius=10, exclude=client_id)
         
-        # 월드 업데이트 (비동기 - DB 저장 포함)
+        # World Update (Async - includes DB save)
         if world_update:
             await apply_world_update_async(world_update)
         
