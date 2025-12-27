@@ -2634,8 +2634,20 @@ Last Modified: {meta.get('last_modified', 'Unknown')}
                 "timestamp": datetime.now().isoformat()
             }), client_id)
 
-        async with DO_SEMAPHORE:
-            await process_action(client_id, args, use_api_key, use_model, is_guest)
+        try:
+            async with DO_SEMAPHORE:
+                await process_action(client_id, args, use_api_key, use_model, is_guest)
+        except Exception as e:
+            # Prevent semaphore leakage or unhandled exceptions from crashing the loop
+            print(f"[DO ERROR] Unhandled exception in semaphore block: {e}")
+            try:
+                await manager.send_personal(json.dumps({
+                    "type": "error",
+                    "content": "[SYSTEM ERROR] An unexpected error occurred while processing your action.",
+                    "timestamp": datetime.now().isoformat()
+                }), client_id)
+            except:
+                pass
     
     elif cmd == "/respawn":
         await handle_respawn(client_id)
@@ -3795,59 +3807,81 @@ async def apply_world_update_async(update: dict):
     if db_instance is None:
         db_instance = await get_db()
     
-    # 생성
-    for item in update.get("create", []):
-        if isinstance(item, dict) and "id" in item:
-            # Ensure position is integers
-            if "position" in item:
-                item["position"] = ensure_int_position(item["position"])
-            world_data["objects"][item["id"]] = item
-            await db_instance.save_object(item["id"], item)
+    # 1. Objects dictionary validation
+    if "objects" not in world_data:
+        world_data["objects"] = {}
+
+    # 2. Handle Creation
+    creates = update.get("create", [])
+    if isinstance(creates, list):
+        for item in creates:
+            if isinstance(item, dict) and "id" in item:
+                # Ensure position is integers
+                if "position" in item:
+                    item["position"] = ensure_int_position(item["position"])
+                world_data["objects"][item["id"]] = item
+                await db_instance.save_object(item["id"], item)
     
-    # 파괴
-    for item_id in update.get("destroy", []):
-        if item_id in world_data["objects"]:
-            obj = world_data["objects"][item_id]
-            if not obj.get("indestructible", False):
-                del world_data["objects"][item_id]
-                await db_instance.delete_object(item_id)
+    # 3. Handle Destruction
+    destroys = update.get("destroy", [])
+    if isinstance(destroys, list):
+        for item_id in destroys:
+            if item_id in world_data["objects"]:
+                obj = world_data["objects"][item_id]
+                if not obj.get("indestructible", False):
+                    del world_data["objects"][item_id]
+                    await db_instance.delete_object(item_id)
     
-    # 수정
-    for item_id, changes in update.get("modify", {}).items():
-        if item_id in world_data["objects"]:
-            # Skip no-op updates to avoid unnecessary DB writes and false "persisted" signals.
-            if not isinstance(changes, dict) or len(changes) == 0:
-                continue
-            # Ensure position is integers
-            if "position" in changes:
-                changes["position"] = ensure_int_position(changes["position"])
-            world_data["objects"][item_id].update(changes)
-            await db_instance.save_object(item_id, world_data["objects"][item_id])
+    # 4. Handle Modification
+    modifies = update.get("modify", {})
+    if isinstance(modifies, dict):
+        for item_id, changes in modifies.items():
+            # Strict existence check to prevent KeyErrors or invalid object updates
+            if item_id in world_data["objects"]:
+                # Skip no-op updates to avoid unnecessary DB writes
+                if not isinstance(changes, dict) or len(changes) == 0:
+                    continue
+                # Ensure position is integers if being modified
+                if "position" in changes:
+                    changes["position"] = ensure_int_position(changes["position"])
+                
+                # Apply changes
+                world_data["objects"][item_id].update(changes)
+                await db_instance.save_object(item_id, world_data["objects"][item_id])
 
 def apply_world_update(update: dict):
     """월드 상태 업데이트 (동기 - 캐시만, 호환성 유지)"""
     global world_data
     
-    # 생성
-    for item in update.get("create", []):
-        if isinstance(item, dict) and "id" in item:
-            if "position" in item:
-                item["position"] = ensure_int_position(item["position"])
-            world_data["objects"][item["id"]] = item
+    if "objects" not in world_data:
+        world_data["objects"] = {}
+
+    # 1. Handle Creation
+    creates = update.get("create", [])
+    if isinstance(creates, list):
+        for item in creates:
+            if isinstance(item, dict) and "id" in item:
+                if "position" in item:
+                    item["position"] = ensure_int_position(item["position"])
+                world_data["objects"][item["id"]] = item
     
-    # 파괴
-    for item_id in update.get("destroy", []):
-        if item_id in world_data["objects"]:
-            obj = world_data["objects"][item_id]
-            if not obj.get("indestructible", False):
-                del world_data["objects"][item_id]
+    # 2. Handle Destruction
+    destroys = update.get("destroy", [])
+    if isinstance(destroys, list):
+        for item_id in destroys:
+            if item_id in world_data["objects"]:
+                obj = world_data["objects"][item_id]
+                if not obj.get("indestructible", False):
+                    del world_data["objects"][item_id]
     
-    # 수정
-    for item_id, changes in update.get("modify", {}).items():
-        if item_id in world_data["objects"]:
-            if isinstance(changes, dict) and "position" in changes:
-                changes["position"] = ensure_int_position(changes["position"])
-            world_data["objects"][item_id].update(changes)
+    # 3. Handle Modification
+    modifies = update.get("modify", {})
+    if isinstance(modifies, dict):
+        for item_id, changes in modifies.items():
+            if item_id in world_data["objects"]:
+                if isinstance(changes, dict) and "position" in changes:
+                    changes["position"] = ensure_int_position(changes["position"])
+                world_data["objects"][item_id].update(changes)
 
 # === Entry Point ===
 if __name__ == "__main__":
