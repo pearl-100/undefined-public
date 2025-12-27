@@ -417,6 +417,17 @@
       "formula": "Outcome = Preparation + Tools + Environment + Physics + Knowledge",
       "note": "Well-prepared amateur > unprepared expert"
     },
+    "data_integrity": {
+      "name": "Data Integrity Protocol",
+      "principle": "Narrative equals Reality. Every fact stated in text must be anchored in the database.",
+      "rules": [
+        "If an NPC is named, they must be created as an object.",
+        "If a building is occupied, it must be registered as a location.",
+        "If an item is scavenged, it must be added to inventory or world objects.",
+        "Silence in the database means non-existence. Anchor everything.",
+        "MANDATORY: Summarize all new permanent facts in the 'extracted_facts' JSON field."
+      ]
+    },
     "death": {
       "name": "Death Protocol",
       "triggers": ["decapitation", "drowning", "organ failure", "exsanguination"],

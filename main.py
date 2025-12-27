@@ -373,6 +373,13 @@ def build_system_prompt(rules: dict, world_state: str, player_state: str,
                     prompt += f"- {key}: {value}\n"
         prompt += "\n"
     
+    prompt += "\n# 🚨 DATA INTEGRITY PROTOCOL (MANDATORY)\n"
+    prompt += "1. NARRATIVE-DATA SYNC: Your narrative is the 'physical reality'. Every person met, item found, or building entered MUST be reflected in 'world_update'.\n"
+    prompt += "2. PERMANENCE: If a user declares a location as 'home' or meets a key NPC (like Mira), you MUST use 'world_update.create' to save them as permanent objects with coordinates.\n"
+    prompt += "3. NO GHOST DATA: Do not just say it in text. If it's not in the JSON 'world_update', it doesn't exist in the future. FORCE synchronization.\n"
+    prompt += "4. HISTORICAL RECOVERY: If a user mentions a past event or object that is missing from current state, search 'recent_history', verify it, and RE-CREATE it in 'world_update' immediately.\n"
+    prompt += "5. FACT EXTRACTION: You MUST include a field 'extracted_facts' (list of strings) in your JSON response summarizing every new permanent reality established in this turn.\n\n"
+
     # Systems (Patent Judge, Pacing, Processing, Creation, Navigation)
     systems = rules.get('systems', {})
     for sys_key in ['patent_judge', 'pacing', 'processing', 'creation', 'navigation', 'vertical']:
@@ -3570,6 +3577,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         world_update = result.get("world_update") or {}
         new_discovery = result.get("new_discovery")
         new_object_type = result.get("new_object_type")
+        extracted_facts = result.get("extracted_facts", [])
 
         creates = world_update.get("create", [])
         destroys = world_update.get("destroy", [])
@@ -3658,6 +3666,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
                 "create": create_count,
                 "modify": modify_count,
                 "destroy": destroy_count,
+                "facts": len(extracted_facts) if isinstance(extracted_facts, list) else 0,
                 "scene_snapshot": scene_snapshot_saved,
                 "scene_snapshot_id": scene_snapshot_id
             },
@@ -3677,6 +3686,38 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         # Broadcast to players within a radius of 10
         await manager.broadcast_nearby(public_msg, pos, radius=10, exclude=client_id)
         
+        # === Fact Extraction Handler ===
+        if extracted_facts and isinstance(extracted_facts, list):
+            try:
+                # Store each fact as a persistent 'fact' object at the current location
+                for idx, fact in enumerate(extracted_facts):
+                    if not fact or not isinstance(fact, str): continue
+                    
+                    # Create a unique ID for the fact to prevent overwriting
+                    sx, sy, sz = int(pos[0]), int(pos[1]), int(pos[2] if len(pos) > 2 else 0)
+                    fact_hash = abs(hash(fact)) % 10000
+                    fact_id = f"fact_{sx}_{sy}_{sz}_{datetime.now().strftime('%H%M%S')}_{idx}_{fact_hash}"
+                    
+                    fact_obj = {
+                        "id": fact_id,
+                        "name": "Established Fact",
+                        "position": [sx, sy, sz],
+                        "description": fact,
+                        "properties": {
+                            "kind": "fact",
+                            "actor": display_name,
+                            "timestamp": datetime.now().isoformat()
+                        }
+                    }
+                    world_data["objects"][fact_id] = fact_obj
+                    if db_instance is None:
+                        db_instance = await get_db()
+                    await db_instance.save_object(fact_id, fact_obj)
+                    persisted = True
+                    persisted_reason = "fact_extraction"
+            except Exception as e:
+                print(f"[FACT ERROR] Failed to persist extracted facts: {e}")
+
         # World Update (Async - includes DB save)
         if world_update:
             await apply_world_update_async(world_update)
