@@ -45,7 +45,7 @@ DO_SEMAPHORE = asyncio.Semaphore(5)
 DO_QUEUE_WAITING_MESSAGE = "[QUEUED] High traffic — waiting for your turn..."
 
 # Memory guardrails (keep in-memory history bounded)
-MAX_IN_MEMORY_HISTORY = 500
+MAX_IN_MEMORY_HISTORY = 2000
 MEMORY_CLEANUP_INTERVAL_SECONDS = 60
 
 # === Server Configuration ===
@@ -55,7 +55,7 @@ SERVER_DEFAULT_MODEL = os.getenv("SERVER_DEFAULT_MODEL", "gemini-2.5-flash")
 # If true, every AI narrative becomes a persistent "scene snapshot" object at the current location.
 # This makes the described world become the world state (visible to others later).
 PERSIST_SCENE_SNAPSHOTS = os.getenv("PERSIST_SCENE_SNAPSHOTS", "true").lower() in ("1", "true", "yes", "y", "on")
-MAX_SCENE_SNAPSHOT_CHARS = int(os.getenv("MAX_SCENE_SNAPSHOT_CHARS", "1200"))
+MAX_SCENE_SNAPSHOT_CHARS = int(os.getenv("MAX_SCENE_SNAPSHOT_CHARS", "2000"))
 
 # === File Paths ===
 WORLD_RULES_FILE = "world_rules.json"
@@ -3404,7 +3404,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
     nearby_objects = {}
     for obj_id, obj in world_data.get("objects", {}).items():
         obj_pos = ensure_int_position(obj.get("position", [999, 999]))
-        if abs(obj_pos[0] - pos[0]) <= 5 and abs(obj_pos[1] - pos[1]) <= 5:
+        if abs(obj_pos[0] - pos[0]) <= 25 and abs(obj_pos[1] - pos[1]) <= 25:
             nearby_objects[obj_id] = obj
     
     # === Known Locations (장거리 이동용) ===
@@ -3424,9 +3424,9 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
             "distance": dist
         })
     
-    # 거리순 정렬 후 상위 30개만
+    # 거리순 정렬 후 상위 100개만
     all_locations.sort(key=lambda x: x["distance"])
-    known_locations = all_locations[:30]
+    known_locations = all_locations[:100]
     
     # 간결한 포맷으로 변환: "Name(x,y,z)"
     location_list = [f"{loc['name']}({loc['position'][0]},{loc['position'][1]},{loc['position'][2]})" 
@@ -3435,7 +3435,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
     world_state = json.dumps({
         "nearby_objects": nearby_objects,
         "known_locations": location_list,
-        "recent_history": world_data.get("history", [])[-10:],
+        "recent_history": world_data.get("history", [])[-30:],
         "current_time": datetime.now().isoformat()
     }, ensure_ascii=False)
     
