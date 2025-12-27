@@ -572,7 +572,8 @@
             
             // Time calculation (X coordinate based timezone)
             const now = new Date();
-            const hour = (now.getHours() + Math.floor((currentPosition[0] || 0) / 10)) % 24;
+            let hour = (now.getHours() + Math.floor((currentPosition[0] || 0) / 10)) % 24;
+            if (hour < 0) hour += 24; // Handle negative modulo in JS
             const minute = now.getMinutes();
             const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
             document.getElementById('hud-time').textContent = `TIME: ${timeStr}`;
