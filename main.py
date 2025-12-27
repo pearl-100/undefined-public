@@ -2034,6 +2034,13 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                                 "content": f"[SYSTEM] {old_nickname} is now known as '{nickname}'.",
                                 "timestamp": datetime.now().isoformat()
                             }))
+
+                            # 계정 분실 방지 안내
+                            await manager.send_personal(json.dumps({
+                                "type": "system",
+                                "content": "💡 [ACCOUNT SAFETY] Save your recovery code with /export to prevent losing your character!",
+                                "timestamp": datetime.now().isoformat()
+                            }), nickname)
                     else:
                         await manager.send_personal(json.dumps({
                             "type": "error",
@@ -2113,7 +2120,12 @@ async def handle_command(client_id: str, command: str, api_key: str, model: str 
 - Changes are saved to the shared world when the AI returns a non-empty "world_update" (create/modify/destroy),
   registers a new material/blueprint, or (if enabled) saves a "scene snapshot" for the current location.
 - If you want others to see something later: try actions like "search/discover/mark/build" that produce a world_update.
-- Building usually requires materials/tools. If you lack them, start by exploring/scavenging and leaving visible markers."""
+- Building usually requires materials/tools. If you lack them, start by exploring/scavenging and leaving visible markers.
+
+[ACCOUNT SAFETY]
+- Use /export to see your unique ID code.
+- Save this code! If you lose your account, use /import <code> to recover it.
+- Without this code, character recovery is impossible."""
         await manager.send_personal(json.dumps({
             "type": "system",
             "content": help_text,
@@ -2236,6 +2248,13 @@ Be the first to support: /donate"""
                 "content": f"[SYSTEM] {old_nickname} changed their name to {new_nickname}.",
                 "timestamp": datetime.now().isoformat()
             }))
+            
+            # 6. 계정 백업 안내
+            await manager.send_personal(json.dumps({
+                "type": "system",
+                "content": "💡 [TIP] To prevent losing your character, use /export and save your unique ID code somewhere safe!",
+                "timestamp": datetime.now().isoformat()
+            }), new_nickname)
             
             print(f"[NAME] {old_nickname} -> {new_nickname}")
         else:
