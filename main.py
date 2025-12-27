@@ -3207,7 +3207,7 @@ async def get_location_description_detailed(position: List[int], client_id: str)
     # Check nearby objects
     nearby_objects = []
     for obj_id, obj in world_data.get("objects", {}).items():
-        obj_pos = obj.get("position", [999, 999])
+        obj_pos = ensure_int_position(obj.get("position", [999, 999]))
         if abs(obj_pos[0] - x) <= 2 and abs(obj_pos[1] - y) <= 2:
             nearby_objects.append(obj)
     
@@ -3295,7 +3295,7 @@ Mountains of waste surround the area."""
     nearby_players = []
     for pid, pdata in manager.player_data.items():
         if pid != client_id:
-            ppos = pdata.get("position", [999, 999])
+            ppos = ensure_int_position(pdata.get("position", [999, 999]))
             if abs(ppos[0] - x) <= 3 and abs(ppos[1] - y) <= 3:
                 nearby_players.append(pid)
     
@@ -3354,7 +3354,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
     # 월드 상태 요약 (주변 오브젝트만)
     nearby_objects = {}
     for obj_id, obj in world_data.get("objects", {}).items():
-        obj_pos = obj.get("position", [999, 999])
+        obj_pos = ensure_int_position(obj.get("position", [999, 999]))
         if abs(obj_pos[0] - pos[0]) <= 5 and abs(obj_pos[1] - pos[1]) <= 5:
             nearby_objects[obj_id] = obj
     
@@ -3363,9 +3363,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
     all_locations = []
     for obj_id, obj in world_data.get("objects", {}).items():
         obj_name = obj.get("name", obj_id)
-        obj_pos = obj.get("position", [0, 0, 0])
-        if len(obj_pos) < 3:
-            obj_pos = [obj_pos[0], obj_pos[1], 0]
+        obj_pos = ensure_int_position(obj.get("position", [0, 0, 0]))
         
         # 현재 위치와의 거리 계산
         dist = abs(obj_pos[0] - pos[0]) + abs(obj_pos[1] - pos[1]) + abs(obj_pos[2] - (pos[2] if len(pos) > 2 else 0))
@@ -3750,6 +3748,9 @@ async def apply_world_update_async(update: dict):
     # 생성
     for item in update.get("create", []):
         if isinstance(item, dict) and "id" in item:
+            # Ensure position is integers
+            if "position" in item:
+                item["position"] = ensure_int_position(item["position"])
             world_data["objects"][item["id"]] = item
             await db_instance.save_object(item["id"], item)
     
@@ -3767,6 +3768,9 @@ async def apply_world_update_async(update: dict):
             # Skip no-op updates to avoid unnecessary DB writes and false "persisted" signals.
             if not isinstance(changes, dict) or len(changes) == 0:
                 continue
+            # Ensure position is integers
+            if "position" in changes:
+                changes["position"] = ensure_int_position(changes["position"])
             world_data["objects"][item_id].update(changes)
             await db_instance.save_object(item_id, world_data["objects"][item_id])
 
@@ -3777,6 +3781,8 @@ def apply_world_update(update: dict):
     # 생성
     for item in update.get("create", []):
         if isinstance(item, dict) and "id" in item:
+            if "position" in item:
+                item["position"] = ensure_int_position(item["position"])
             world_data["objects"][item["id"]] = item
     
     # 파괴
@@ -3789,6 +3795,8 @@ def apply_world_update(update: dict):
     # 수정
     for item_id, changes in update.get("modify", {}).items():
         if item_id in world_data["objects"]:
+            if isinstance(changes, dict) and "position" in changes:
+                changes["position"] = ensure_int_position(changes["position"])
             world_data["objects"][item_id].update(changes)
 
 # === Entry Point ===
