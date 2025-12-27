@@ -3442,7 +3442,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
     world_state = json.dumps({
         "nearby_objects": nearby_objects,
         "known_locations": location_list,
-        "recent_history": world_data.get("history", [])[-30:],
+        "recent_history": world_data.get("history", [])[-100:],
         "current_time": datetime.now().isoformat()
     }, ensure_ascii=False)
     
