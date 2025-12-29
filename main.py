@@ -2069,7 +2069,12 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     await manager.broadcast(welcome_msg)
     
     # Send current location info
-    location_info = get_location_description([0, 0])
+    # Use saved_position for location description
+    # Ensure saved_position has valid integers before passing
+    pos_x = int(saved_position.get("x", 0))
+    pos_y = int(saved_position.get("y", 0)) 
+    pos_z = int(saved_position.get("z", 0))
+    location_info = get_location_description([pos_x, pos_y, pos_z])
     
     # Special tutorial guidance for new users (Pathos & User design)
     # Only show to users who haven't set their name yet (is_new_user == True)
@@ -2092,13 +2097,11 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         }), nickname)
     else:
         # Returning users see standard location info
-        # Get actual user location instead of hardcoded [0,0]
-        current_pos = [saved_position["x"], saved_position["y"], saved_position["z"]]
-        location_desc = get_location_description(current_pos)
+        # Use the location description generated above using saved_position
         
         await manager.send_personal(json.dumps({
             "type": "narrative",
-            "content": f"Welcome back, {nickname}.\n\n{location_desc}",
+            "content": f"Welcome back, {nickname}.\n\n{location_info}",
             "timestamp": datetime.now().isoformat()
         }), nickname)
     
