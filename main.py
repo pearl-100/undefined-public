@@ -1726,10 +1726,11 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         # Retrieve or create nickname and position
         if user_id in world_data["users"]:
             user_data = world_data["users"][user_id]
+            is_new_user = False  # Existing user in DB, skip tutorial
+            
             # Support both old string format and new dict format
             if isinstance(user_data, dict):
                 nickname = user_data["nickname"]
-                is_new_user = not user_data.get("name_set", False)
                 # Load saved position (default to 0,0,0, force integers)
                 saved_position = user_data.get("position", {"x": 0, "y": 0, "z": 0})
                 if "z" not in saved_position:
