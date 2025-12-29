@@ -3956,6 +3956,30 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         if world_update:
             await apply_world_update_async(world_update)
         
+        # === Python Code Execution for Math Verification ===
+        python_code = result.get("python_code")
+        if python_code and isinstance(python_code, str):
+            try:
+                # Safe execution environment
+                safe_globals = {"__builtins__": None, "math": __import__("math"), "abs": abs, "min": min, "max": max, "sum": sum, "round": round, "int": int, "float": float}
+                safe_locals = {}
+                
+                # Limit execution time/resources crudely by scope and simplicity
+                exec(python_code, safe_globals, safe_locals)
+                
+                # Check for 'inventory_change' variable
+                if "inventory_change" in safe_locals and isinstance(safe_locals["inventory_change"], dict):
+                    # Override the AI's hallucinated inventory_change with the calculated one
+                    if "user_update" not in result: result["user_update"] = {}
+                    result["user_update"]["inventory_change"] = safe_locals["inventory_change"]
+                    print(f"[MATH VERIFIED] Python calculated inventory change: {safe_locals['inventory_change']}")
+                    
+                    # Append verification note to narrative (optional, for debugging or transparency)
+                    # narrative += f"\n[System] Transaction verified by protocol."
+            except Exception as e:
+                print(f"[MATH ERROR] Failed to execute AI python code: {e}")
+                # Fallback: Just use the original result, or maybe log an error to the user
+
         # 유저 업데이트
         user_update = result.get("user_update", {})
         if user_update:
