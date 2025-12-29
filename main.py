@@ -269,6 +269,7 @@ Example:
     "position_delta": [dx, dy, dz] or null,
     "is_dead": false
   },
+  "mentioned_objects": ["Exact Name of Object 1", "Exact Name of Object 2"],
   "new_discovery": null,
   "new_object_type": null,
   "engine_notes": {
@@ -283,6 +284,7 @@ Example:
 }
 
 NOTES:
+- mentioned_objects: LIST strings of exact object names mentioned/interacted with in the narrative.
 - new_discovery: null by default. Include only when inventing NEW MATERIAL.
 - new_object_type: null by default. Include only when creating NEW ITEM TYPE.
 - BOTH can be non-null if user creates new material AND new item in one action!
@@ -3810,6 +3812,14 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         has_world_update = bool(has_create or has_destroy or has_modify)
         has_discovery = isinstance(new_discovery, dict) and bool(new_discovery.get("id"))
         has_blueprint = isinstance(new_object_type, dict) and bool(new_object_type.get("id"))
+
+        # Append mentioned objects to narrative for pinning
+        mentioned_objects = result.get("mentioned_objects", [])
+        if mentioned_objects and isinstance(mentioned_objects, list):
+             valid_mentions = [str(m) for m in mentioned_objects if m and isinstance(m, str)]
+             unique_mentions = sorted(list(set(valid_mentions)))
+             if unique_mentions:
+                 narrative += "\n\n[📍 PINNABLE: " + ", ".join(f"{name}" for name in unique_mentions) + "]"
 
         # Optional: persist the narrative itself as a location "scene snapshot" object.
         scene_snapshot_id = None

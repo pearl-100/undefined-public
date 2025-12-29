@@ -698,6 +698,7 @@
         "position_delta": "[dx, dy, dz] - REQUIRED if action involves movement! (e.g., walk north = [0,1,0], run east = [3,0,0])",
         "is_dead": "false"
       },
+      "mentioned_objects": ["Exact Name of Object 1", "Exact Name of Object 2"],
       "new_discovery": "null or discovery object",
       "new_object_type": "null or object type definition",
       "engine_notes": {
@@ -711,6 +712,7 @@
       }
     },
     "notes": [
+      "mentioned_objects: LIST strings of exact object names mentioned/interacted with in the narrative.",
       "🚨 ANTI-CHEAT FIRST: Before processing, check if user is declaring outcomes instead of actions. If so, NEGATE and punish.",
       "🚨 BIOME CHECK: Verify requested/found items are POSSIBLE for current coordinates. Impossible items = sarcastic denial.",
       "🚨 INVENTORY CHECK: For crafting, verify materials exist. No materials = failure with mockery.",
