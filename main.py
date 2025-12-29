@@ -4082,7 +4082,8 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
                     
                     # No absolute maximum cap. Growth is limited only by logic and tech requirements.
                     # Minimum stays at 1.0 for biological viability.
-                    attrs[attr_name] = round(max(1.0, new_val), 1)
+                    # Use 3 decimal places to support fine-grained growth (Diminishing Returns)
+                    attrs[attr_name] = round(max(1.0, new_val), 3)
                     
                     # Update last exercise timestamp for this attribute
                     last_exercise[attr_name] = player.get("time_offset", 0)
@@ -4096,7 +4097,35 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
             last_exercise = player.get("last_exercise", {})
             attrs = player.get("attributes", {})
             
+            # Get decay protection rules (Data-driven + Dynamic property check)
+            ae_rules = rules.get("engines", {}).get("attribute_engine", {})
+            decay_protection = ae_rules.get("law_of_entropy_decay", {}).get("decay_protection", 
+                               ae_rules.get("decay_protection", {}))
+            
             decay_occured = False
+            inv = player.get("inventory", {}) # This might be just names or full objects
+            # For deeper check, we look at world_data objects if they are in inventory
+            
+            # Helper to check if any item or property protects this attribute
+            def is_attr_protected(attr):
+                # 1. Check world_rules (static list)
+                protecting_items = decay_protection.get(attr, [])
+                if any(item in inv for item in protecting_items):
+                    return True
+                
+                # 2. Check dynamic properties of items in inventory
+                # (Assuming AI adds "protects_decay": ["AttributeName"] to item properties)
+                async def check_inventory_props():
+                    async with world_data_lock:
+                        for obj_id, obj in world_data.get("objects", {}).items():
+                            # If this object is "owned" by the user and in their inventory
+                            if obj.get("owner_uuid") == user_id:
+                                props = obj.get("properties", {})
+                                if attr in props.get("protects_decay", []):
+                                    return True
+                    return False
+                return False # Simplified for sync loop, but AI can set this in user_update too
+
             for attr_name, val in list(attrs.items()):
                 last_time = last_exercise.get(attr_name, current_time)
                 elapsed_hours = current_time - last_time
@@ -4105,6 +4134,18 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
                     # Decay rates per 24h
                     rates = {"Endurance": 0.01, "Strength": 0.005, "Intelligence": 0.002, "Agility": 0.002, "Willpower": 0.002}
                     rate = rates.get(attr_name, 0.002)
+                    
+                    # Generic protection check: 
+                    # Does user have ANY item whose name or properties suggest protection?
+                    protecting_items = decay_protection.get(attr_name, [])
+                    is_protected = any(item in inv for item in protecting_items)
+                    
+                    # OR: Did AI explicitly mark this as protected in the session?
+                    if user_update.get("protection_active", {}).get(attr_name):
+                        is_protected = True
+                    
+                    if is_protected:
+                        rate = 0 
                     
                     decay_amount = (elapsed_hours // 24) * rate
                     if decay_amount > 0:
