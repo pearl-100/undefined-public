@@ -436,6 +436,12 @@
       },
       "clarkes_law": "Sufficiently explained technology may appear magical."
     },
+    "calculation_protocol": {
+      "name": "Calculation Protocol",
+      "rule": "For ANY action requiring mathematical computation (trading, physics, gambling, probability, distance, stats), you MUST provide a 'python_code' string to ensure accuracy.",
+      "requirement": "The python code must define 'calculated_value' (for general numbers) or 'inventory_change' (for items).",
+      "example": "python_code: 'import random; calculated_value = random.randint(1, 6) * 10'"
+    },
     "language": {
       "name": "English-Only Output Protocol [CRITICAL]",
       "rule": "ALL OUTPUT MUST BE IN ENGLISH. No exceptions.",
@@ -703,7 +709,7 @@
         "position_delta": "[dx, dy, dz] - REQUIRED if action involves movement! (e.g., walk north = [0,1,0], run east = [3,0,0])",
         "is_dead": "false"
       },
-      "python_code": "OPTIONAL. Valid Python 3 code string to verify math/logic. e.g. 'inventory_change = {item: -1, \"Credits\": 45000}'",
+      "python_code": "OPTIONAL. Valid Python 3 code string for ANY math verification (physics, trade, gambling). Must define 'calculated_value' or 'inventory_change'.",
       "mentioned_objects": ["Exact Name of Object 1", "Exact Name of Object 2"],
       "new_discovery": "null or discovery object",
       "new_object_type": "null or object type definition",

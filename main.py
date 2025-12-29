@@ -3842,6 +3842,40 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
              if unique_mentions:
                  narrative += "\n\n[📍 PINNABLE: " + ", ".join(f"{name}" for name in unique_mentions) + "]"
 
+        # === Python Code Execution for Math Verification ===
+        # Moves generic math/probability checks BEFORE persistence so result appears in narrative/snapshot
+        python_code = result.get("python_code")
+        if python_code and isinstance(python_code, str):
+            try:
+                # Safe execution environment (Added random for probability)
+                safe_globals = {
+                    "__builtins__": None, 
+                    "math": __import__("math"), 
+                    "random": __import__("random"),
+                    "abs": abs, "min": min, "max": max, "sum": sum, "round": round, "int": int, "float": float
+                }
+                safe_locals = {}
+                
+                # Limit execution time/resources crudely by scope and simplicity
+                exec(python_code, safe_globals, safe_locals)
+                
+                # 1. Check for 'calculated_value' (Generic Math)
+                if "calculated_value" in safe_locals:
+                    calc_val = safe_locals["calculated_value"]
+                    narrative += f"\n\n[🧮 CALCULATION: {calc_val}]"
+                    print(f"[MATH VERIFIED] Python calculated value: {calc_val}")
+
+                # 2. Check for 'inventory_change' variable (Trading/Looting)
+                if "inventory_change" in safe_locals and isinstance(safe_locals["inventory_change"], dict):
+                    # Override the AI's hallucinated inventory_change with the calculated one
+                    if "user_update" not in result: result["user_update"] = {}
+                    result["user_update"]["inventory_change"] = safe_locals["inventory_change"]
+                    print(f"[MATH VERIFIED] Python calculated inventory change: {safe_locals['inventory_change']}")
+                    
+            except Exception as e:
+                print(f"[MATH ERROR] Failed to execute AI python code: {e}")
+                narrative += f"\n\n[SYSTEM ERROR] Calculation failed: {e}"
+
         # Optional: persist the narrative itself as a location "scene snapshot" object.
         scene_snapshot_id = None
         scene_snapshot_saved = False
@@ -3977,30 +4011,6 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         if world_update:
             await apply_world_update_async(world_update)
         
-        # === Python Code Execution for Math Verification ===
-        python_code = result.get("python_code")
-        if python_code and isinstance(python_code, str):
-            try:
-                # Safe execution environment
-                safe_globals = {"__builtins__": None, "math": __import__("math"), "abs": abs, "min": min, "max": max, "sum": sum, "round": round, "int": int, "float": float}
-                safe_locals = {}
-                
-                # Limit execution time/resources crudely by scope and simplicity
-                exec(python_code, safe_globals, safe_locals)
-                
-                # Check for 'inventory_change' variable
-                if "inventory_change" in safe_locals and isinstance(safe_locals["inventory_change"], dict):
-                    # Override the AI's hallucinated inventory_change with the calculated one
-                    if "user_update" not in result: result["user_update"] = {}
-                    result["user_update"]["inventory_change"] = safe_locals["inventory_change"]
-                    print(f"[MATH VERIFIED] Python calculated inventory change: {safe_locals['inventory_change']}")
-                    
-                    # Append verification note to narrative (optional, for debugging or transparency)
-                    # narrative += f"\n[System] Transaction verified by protocol."
-            except Exception as e:
-                print(f"[MATH ERROR] Failed to execute AI python code: {e}")
-                # Fallback: Just use the original result, or maybe log an error to the user
-
         # 유저 업데이트
         user_update = result.get("user_update", {})
         if user_update:
