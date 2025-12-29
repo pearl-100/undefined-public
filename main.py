@@ -39,6 +39,10 @@ load_dotenv()
 world_data_lock = asyncio.Lock()    # Protects world_data dictionary access
 file_write_lock = asyncio.Lock()    # Protects file I/O operations
 
+# Optimization: O(1) Nickname lookup
+# Contains ALL nicknames (online + offline)
+all_nicknames: set = set()
+
 # Heavy task concurrency limiter (Oracle Free Tier RAM 1GB friendly)
 # - Limits simultaneous /do (AI + DB write) to avoid memory/CPU spikes.
 DO_SEMAPHORE = asyncio.Semaphore(5)
@@ -1323,6 +1327,7 @@ class ConnectionManager:
         self.player_data: Dict[str, dict] = {}
         self.connection_times: Dict[str, datetime] = {}
         self.nickname_to_uuid: Dict[str, str] = {}  # nickname -> uuid mapping
+        self.last_action_time: Dict[str, datetime] = {} # Rate limiting
     
     def get_uuid_by_nickname(self, nickname: str) -> Optional[str]:
         """Get UUID from nickname"""
@@ -1724,13 +1729,23 @@ async def periodic_memory_cleanup():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global world_data, scheduler_task, log_archive_task, db_instance, memory_cleanup_task
+    global world_data, scheduler_task, log_archive_task, db_instance, memory_cleanup_task, all_nicknames
     
     # Initialize SQLite DB + JSON migration
     db_instance = await migrate_json_to_db_if_needed()
     
     # Load world_data cache from DB
     world_data = await load_world_data_from_db()
+    
+    # Initialize all_nicknames set (Optimization O(1))
+    all_nicknames = set()
+    users = world_data.get("users", {})
+    for u in users.values():
+        nick = u.get("nickname") if isinstance(u, dict) else u
+        if nick:
+            all_nicknames.add(nick)
+            
+    print(f"[SERVER] Loaded {len(all_nicknames)} nicknames into memory cache.")
     
     # Set server_time_started
     if world_data.get("server_time_started") is None:
@@ -1901,75 +1916,100 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     global world_data, db_instance
     
     # Initialize users dictionary if not exists
-    if "users" not in world_data:
-        world_data["users"] = {}
-    
-    # Retrieve or create nickname and position
-    if user_id in world_data["users"]:
-        user_data = world_data["users"][user_id]
-        # Support both old string format and new dict format
-        if isinstance(user_data, dict):
-            nickname = user_data["nickname"]
-            is_new_user = not user_data.get("name_set", False)
-            # Load saved position (default to 0,0,0, force integers)
-            saved_position = user_data.get("position", {"x": 0, "y": 0, "z": 0})
-            if "z" not in saved_position:
-                saved_position["z"] = 0
-            # Ensure all coordinates are integers
-            saved_position = {
-                "x": int(saved_position.get("x", 0) or 0),
-                "y": int(saved_position.get("y", 0) or 0),
-                "z": int(saved_position.get("z", 0) or 0)
-            }
-            # Initialize attributes and skills if missing (backward compatibility)
-            if "attributes" not in user_data:
-                user_data["attributes"] = {}
-            if "skills" not in user_data:
-                user_data["skills"] = {}
+    async with world_data_lock:
+        if "users" not in world_data:
+            world_data["users"] = {}
+        
+        # Retrieve or create nickname and position
+        if user_id in world_data["users"]:
+            user_data = world_data["users"][user_id]
+            # Support both old string format and new dict format
+            if isinstance(user_data, dict):
+                nickname = user_data["nickname"]
+                is_new_user = not user_data.get("name_set", False)
+                # Load saved position (default to 0,0,0, force integers)
+                saved_position = user_data.get("position", {"x": 0, "y": 0, "z": 0})
+                if "z" not in saved_position:
+                    saved_position["z"] = 0
+                # Ensure all coordinates are integers
+                saved_position = {
+                    "x": int(saved_position.get("x", 0) or 0),
+                    "y": int(saved_position.get("y", 0) or 0),
+                    "z": int(saved_position.get("z", 0) or 0)
+                }
+                # Initialize attributes and skills if missing (backward compatibility)
+                if "attributes" not in user_data:
+                    user_data["attributes"] = {}
+                if "skills" not in user_data:
+                    user_data["skills"] = {}
+            else:
+                # Migrate legacy string format to new dict format
+                nickname = user_data
+                saved_position = {"x": 0, "y": 0, "z": 0}
+                world_data["users"][user_id] = {
+                    "nickname": nickname, 
+                    "name_set": True,
+                    "position": saved_position,
+                    "status": "Healthy",
+                    "inventory": {},
+                    "attributes": {},
+                    "skills": {}
+                }
+                # Lock 안에서 저장 호출 (주의: save_world_data 내부에서도 락을 잡는지 확인 필요. 
+                # 현재 save_world_data 함수는 없거나 JSONRepository 사용. 
+                # repository.save_user 는 내부적으로 lock 사용. 재진입 불가하므로 주의)
+                # 여기서는 메모리만 업데이트하고, DB 저장은 락 밖에서 하거나 repository 메소드 수정 필요.
+                # 임시로 메모리 업데이트만 여기서 수행하고, DB 저장은 아래에서 별도로.
+                is_new_user = False
         else:
-            # Migrate legacy string format to new dict format
-            nickname = user_data
+            # New user: Create nickname + initial position (0, 0, 0)
+            # CONCEPT: Character Creation - Assigning basic potential (Conceptualized by Pathos ★)
+            nickname = f"User_{random.randint(10000, 99999)}"
+            # Ensure unique initial nickname
+            while nickname in all_nicknames:
+                nickname = f"User_{random.randint(10000, 99999)}"
+            all_nicknames.add(nickname)
+            
             saved_position = {"x": 0, "y": 0, "z": 0}
+            
+            # Initial attributes (randomized pool)
+            initial_attributes = {
+                "Strength": random.randint(3, 8),
+                "Agility": random.randint(3, 8),
+                "Endurance": random.randint(3, 8),
+                "Intelligence": random.randint(3, 8),
+                "Willpower": random.randint(3, 8)
+            }
+            
             world_data["users"][user_id] = {
                 "nickname": nickname, 
-                "name_set": True,
+                "name_set": False,
                 "position": saved_position,
                 "status": "Healthy",
                 "inventory": {},
-                "attributes": {},
+                "attributes": initial_attributes,
                 "skills": {}
             }
-            await save_world_data(world_data)
-            is_new_user = False
-    else:
-        # New user: Create nickname + initial position (0, 0, 0)
-        # CONCEPT: Character Creation - Assigning basic potential (Conceptualized by Pathos ★)
-        nickname = f"User_{random.randint(10000, 99999)}"
-        saved_position = {"x": 0, "y": 0, "z": 0}
-        
-        # Initial attributes (randomized pool)
-        initial_attributes = {
-            "Strength": random.randint(3, 8),
-            "Agility": random.randint(3, 8),
-            "Endurance": random.randint(3, 8),
-            "Intelligence": random.randint(3, 8),
-            "Willpower": random.randint(3, 8)
-        }
-        
-        world_data["users"][user_id] = {
-            "nickname": nickname, 
-            "name_set": False,
-            "position": saved_position,
-            "status": "Healthy",
-            "inventory": {},
-            "attributes": initial_attributes,
-            "skills": {}
-        }
-        # Save to DB
-        if db_instance is None:
-            db_instance = await get_db()
-        await db_instance.save_user(user_id, world_data["users"][user_id])
-        is_new_user = True
+            is_new_user = True
+            
+    # DB Save (Outside Lock if possible, or ensure thread safety)
+    # db_instance methods are async and use aiosqlite, which is thread-safe per connection mostly
+    if db_instance is None:
+        db_instance = await get_db()
+    
+    # 여기서 world_data["users"][user_id]를 다시 읽어야 하는데 락이 필요할 수 있음.
+    # 하지만 로컬 변수로 복사해둔 데이터가 없으므로 다시 읽거나, 위에서 복사해뒀어야 함.
+    # 간단히 하기 위해: 위에서 메모리 업데이트는 끝났으므로, 
+    # DB 저장은 비동기로 수행하되 데이터 정합성을 위해 락 안에서 수행된 데이터를 저장해야 함.
+    # 현재 구조상 Lock 밖에서 읽으면 그 사이에 변경될 수 있음.
+    # -> 해결책: Lock 범위 안에서 데이터를 복사(deep copy)하여 DB 저장용 변수로 빼내거나,
+    #    DB 저장 호출 자체를 Lock 안에서 수행 (단, DB I/O가 길어지면 락 점유 시간 길어짐)
+    #    여기서는 초기 접속시 한 번이므로 락 안에서 복사 후 밖에서 저장하는 방식 선택.
+    
+    async with world_data_lock:
+        user_data_for_db = world_data["users"][user_id].copy()
+    
+    await db_instance.save_user(user_id, user_data_for_db)
     
     await manager.connect(websocket, nickname)
     
@@ -2079,34 +2119,50 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                     # New user nickname setting (only allowed once)
                     new_nickname = message.get("new_nickname", "").strip()
                     if new_nickname and is_new_user:
-                        # Check for duplicate nickname
-                        existing_names = [v["nickname"] if isinstance(v, dict) else v for v in world_data["users"].values()]
-                        if new_nickname in existing_names:
-                            await manager.send_personal(json.dumps({
-                                "type": "error",
-                                "content": f"[ERROR] Nickname '{new_nickname}' is already taken.",
-                                "timestamp": datetime.now().isoformat()
-                            }), nickname)
-                        else:
-                            # Change nickname
-                            old_nickname = nickname
-                            manager.disconnect(old_nickname)
-                            
-                            # Update DB
-                            world_data["users"][user_id] = {
-                                "nickname": new_nickname, 
-                                "name_set": True, 
-                                "position": saved_position, 
-                                "status": "Healthy", 
-                                "inventory": {},
-                                "attributes": user_data.get("attributes", {}),
-                                "skills": user_data.get("skills", {})
-                            }
+                        success = False
+                        user_data_for_db = None
+                        
+                        # [LOCK] Critical section for nickname uniqueness O(1)
+                        async with world_data_lock:
+                            # Check for duplicate nickname using global set
+                            if new_nickname in all_nicknames:
+                                await manager.send_personal(json.dumps({
+                                    "type": "error",
+                                    "content": f"[ERROR] Nickname '{new_nickname}' is already taken.",
+                                    "timestamp": datetime.now().isoformat()
+                                }), nickname)
+                            else:
+                                # Change nickname
+                                old_nickname = nickname
+                                if old_nickname in all_nicknames:
+                                    all_nicknames.remove(old_nickname)
+                                all_nicknames.add(new_nickname)
+                                
+                                # Update DB (Memory update)
+                                world_data["users"][user_id] = {
+                                    "nickname": new_nickname, 
+                                    "name_set": True, 
+                                    "position": saved_position, 
+                                    "status": "Healthy", 
+                                    "inventory": {},
+                                    "attributes": user_data.get("attributes", {}),
+                                    "skills": user_data.get("skills", {})
+                                }
+                                # Prepare data for DB save
+                                user_data_for_db = world_data["users"][user_id].copy()
+                                success = True
+
+                        # [LOCK END]
+                        
+                        if success:
+                            if nickname != new_nickname:
+                                 manager.disconnect(old_nickname)
+                                 nickname = new_nickname
+                                 
                             if db_instance is None:
                                 db_instance = await get_db()
-                            await db_instance.save_user(user_id, world_data["users"][user_id])
+                            await db_instance.save_user(user_id, user_data_for_db)
                             
-                            nickname = new_nickname
                             is_new_user = False
                             await manager.connect(websocket, nickname, accept=False)  # Reuse existing socket
                             
@@ -2271,30 +2327,44 @@ Be the first to support: /donate"""
             }), client_id)
             return
         
-        # Duplicate check
-        existing_names = [v["nickname"] if isinstance(v, dict) else v for v in world_data["users"].values()]
-        if new_nickname in existing_names:
-            await manager.send_personal(json.dumps({
-                "type": "error",
-                "content": f"[ERROR] Nickname '{new_nickname}' is already taken.",
-                "timestamp": datetime.now().isoformat()
-            }), client_id)
-            return
-        
-        # Process nickname change
+        success = False
         old_nickname = client_id
-        
-        # 1. Update world_data
-        if user_id and user_id in world_data["users"]:
-            if isinstance(world_data["users"][user_id], dict):
-                world_data["users"][user_id]["nickname"] = new_nickname
+        user_data_copy = None
+
+        # [LOCK] Critical Section for Uniqueness Check & Update
+        async with world_data_lock:
+            # Duplicate check O(1)
+            if new_nickname in all_nicknames:
+                await manager.send_personal(json.dumps({
+                    "type": "error",
+                    "content": f"[ERROR] Nickname '{new_nickname}' is already taken.",
+                    "timestamp": datetime.now().isoformat()
+                }), client_id)
+                # Lock will release automatically
             else:
-                world_data["users"][user_id] = {"nickname": new_nickname, "name_set": True, "position": {"x": 0, "y": 0, "z": 0}, "status": "Healthy", "inventory": {}}
-            
-            # 2. Save to SQLite DB
+                # 1. Update world_data
+                if user_id and user_id in world_data["users"]:
+                    if isinstance(world_data["users"][user_id], dict):
+                        world_data["users"][user_id]["nickname"] = new_nickname
+                    else:
+                        world_data["users"][user_id] = {"nickname": new_nickname, "name_set": True, "position": {"x": 0, "y": 0, "z": 0}, "status": "Healthy", "inventory": {}}
+                    
+                    if old_nickname in all_nicknames:
+                        all_nicknames.remove(old_nickname)
+                    all_nicknames.add(new_nickname)
+                    
+                    user_data_copy = world_data["users"][user_id].copy()
+                    success = True
+                else:
+                    # Should not happen if user_id is valid
+                    pass
+        # [LOCK END]
+
+        if success and user_data_copy:
+            # 2. Save to SQLite DB (Async)
             if db_instance is None:
                 db_instance = await get_db()
-            await db_instance.save_user(user_id, world_data["users"][user_id])
+            await db_instance.save_user(user_id, user_data_copy)
             
             # 3. Update manager internal state
             if old_nickname in manager.active_connections:
@@ -2333,10 +2403,10 @@ Be the first to support: /donate"""
             }), new_nickname)
             
             print(f"[NAME] {old_nickname} -> {new_nickname}")
-        else:
-            await manager.send_personal(json.dumps({
+        elif not success and new_nickname not in existing_names: # Failed for other reasons
+             await manager.send_personal(json.dumps({
                 "type": "error",
-                "content": "[ERROR] Failed to change nickname.",
+                "content": "[ERROR] Failed to change nickname (User not found).",
                 "timestamp": datetime.now().isoformat()
             }), client_id)
     
@@ -2663,6 +2733,18 @@ Last Modified: {meta.get('last_modified', 'Unknown')}
             await manager.broadcast(say_msg)
             
     elif cmd == "/do":
+        # Rate Limiting (2.0s cooldown)
+        last_time = manager.last_action_time.get(client_id)
+        if last_time and (datetime.now() - last_time).total_seconds() < 2.0:
+             await manager.send_personal(json.dumps({
+                "type": "error",
+                "content": "[SLOW DOWN] Please wait a moment before acting again.",
+                "timestamp": datetime.now().isoformat()
+            }), client_id)
+             return
+        
+        manager.last_action_time[client_id] = datetime.now()
+
         # 죽음 상태 체크
         player = manager.player_data.get(client_id, {})
         if player.get("is_dead", False):
@@ -3275,7 +3357,7 @@ def get_weather(x: int, y: int) -> dict:
     
     # Time-based additional effects
     time_info = get_world_time(x)
-    if time_info["period_en"] == "NIGHT":
+    if time_info["period"] == "NIGHT":
         weather["visibility"] = "dark" if weather["visibility"] == "clear" else weather["visibility"]
         weather["effects"].append("darkness")
         if "description" in weather:
@@ -3481,32 +3563,51 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
     pos = player.get("position", [0, 0])
     
     # World state summary (nearby objects only)
+    # [LOCK] Read world_data with lock to ensure consistency
     nearby_objects = {}
-    for obj_id, obj in world_data.get("objects", {}).items():
-        obj_pos = ensure_int_position(obj.get("position", [999, 999]))
-        if abs(obj_pos[0] - pos[0]) <= 100 and abs(obj_pos[1] - pos[1]) <= 100:
-            nearby_objects[obj_id] = obj
+    known_locations_list = []
+    recent_history_list = []
     
-    # === Known Locations (For long distance travel) ===
-    # Extract names and coordinates of all objects (sorted by distance, max 500)
-    all_locations = []
-    for obj_id, obj in world_data.get("objects", {}).items():
-        obj_name = obj.get("name", obj_id)
-        obj_pos = ensure_int_position(obj.get("position", [0, 0, 0]))
+    # Pre-fetch registries (copy to avoid lock contention during long JSON dumps if necessary, 
+    # though here we just access them quickly)
+    materials_registry_data = {}
+    object_types_registry_data = {}
+
+    async with world_data_lock:
+        # 1. Nearby objects
+        for obj_id, obj in world_data.get("objects", {}).items():
+            obj_pos = ensure_int_position(obj.get("position", [999, 999]))
+            if abs(obj_pos[0] - pos[0]) <= 100 and abs(obj_pos[1] - pos[1]) <= 100:
+                nearby_objects[obj_id] = obj.copy() if isinstance(obj, dict) else obj # Shallow copy safe for now
+
+        # 2. Known Locations
+        for obj_id, obj in world_data.get("objects", {}).items():
+            obj_name = obj.get("name", obj_id)
+            obj_pos = ensure_int_position(obj.get("position", [0, 0, 0]))
+            
+            # Calculate distance from current position
+            dist = abs(obj_pos[0] - pos[0]) + abs(obj_pos[1] - pos[1]) + abs(obj_pos[2] - (pos[2] if len(pos) > 2 else 0))
+            
+            known_locations_list.append({
+                "id": obj_id,
+                "name": obj_name,
+                "position": obj_pos,
+                "distance": dist
+            })
+            
+        # 3. History
+        recent_history_list = list(world_data.get("history", []))[-500:] # Copy list
         
-        # Calculate distance from current position
-        dist = abs(obj_pos[0] - pos[0]) + abs(obj_pos[1] - pos[1]) + abs(obj_pos[2] - (pos[2] if len(pos) > 2 else 0))
+        # 4. Registries
+        materials = world_data.get("materials", {})
+        materials_registry_data = {k: v for k, v in materials.items() if k != "_README"}
         
-        all_locations.append({
-            "id": obj_id,
-            "name": obj_name,
-            "position": obj_pos,
-            "distance": dist
-        })
-    
-    # Sort by distance and take top 500
-    all_locations.sort(key=lambda x: x["distance"])
-    known_locations = all_locations[:500]
+        object_types = world_data.get("object_types", {})
+        object_types_registry_data = {k: v for k, v in object_types.items() if k != "_README"}
+
+    # Sort by distance and take top 500 (Outside Lock)
+    known_locations_list.sort(key=lambda x: x["distance"])
+    known_locations = known_locations_list[:500]
     
     # Convert to concise format: "Name(x,y,z)"
     location_list = [f"{loc['name']}({loc['position'][0]},{loc['position'][1]},{loc['position'][2]})" 
@@ -3515,7 +3616,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
     world_state = json.dumps({
         "nearby_objects": nearby_objects,
         "known_locations": location_list,
-        "recent_history": world_data.get("history", [])[-500:],
+        "recent_history": recent_history_list,
         "current_time": datetime.now().isoformat()
     }, ensure_ascii=False)
     
@@ -3541,21 +3642,19 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
     }, ensure_ascii=False)
     
     # Materials registry (For Quick Craft)
-    materials = world_data.get("materials", {})
-    registered_materials = {k: v for k, v in materials.items() if k != "_README"}
+    # Use pre-fetched data
     materials_registry = json.dumps({
-        "registered_count": len(registered_materials),
-        "materials": list(registered_materials.keys()) if registered_materials else ["(No inventions registered yet)"],
+        "registered_count": len(materials_registry_data),
+        "materials": list(materials_registry_data.keys()) if materials_registry_data else ["(No inventions registered yet)"],
         "note": "Materials in this list can be Quick Crafted (instant craft if you have ingredients)"
     }, ensure_ascii=False)
     
     # Blueprints registry (For Quick Craft)
-    object_types = world_data.get("object_types", {})
-    registered_types = {k: v for k, v in object_types.items() if k != "_README"}
+    # Use pre-fetched data
     object_types_registry = json.dumps({
-        "registered_count": len(registered_types),
+        "registered_count": len(object_types_registry_data),
         "blueprints": {k: {"name": v.get("name"), "materials": v.get("base_materials", [])} 
-                       for k, v in registered_types.items()} if registered_types else {"(No blueprints registered yet)": {}},
+                       for k, v in object_types_registry_data.items()} if object_types_registry_data else {"(No blueprints registered yet)": {}},
         "note": "Objects in this list can be Quick Crafted (instant craft if you have materials + facility)"
     }, ensure_ascii=False)
     
@@ -3763,33 +3862,48 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         
         # === Fact Extraction Handler ===
         if extracted_facts and isinstance(extracted_facts, list):
+            fact_tasks = []
             try:
                 # Store each fact as a persistent 'fact' object at the current location
-                for idx, fact in enumerate(extracted_facts):
-                    if not fact or not isinstance(fact, str): continue
-                    
-                    # Create a unique ID for the fact to prevent overwriting
-                    sx, sy, sz = int(pos[0]), int(pos[1]), int(pos[2] if len(pos) > 2 else 0)
-                    fact_hash = abs(hash(fact)) % 10000
-                    fact_id = f"fact_{sx}_{sy}_{sz}_{datetime.now().strftime('%H%M%S')}_{idx}_{fact_hash}"
-                    
-                    fact_obj = {
-                        "id": fact_id,
-                        "name": "Established Fact",
-                        "position": [sx, sy, sz],
-                        "description": fact,
-                        "properties": {
-                            "kind": "fact",
-                            "actor": display_name,
-                            "timestamp": datetime.now().isoformat()
+                sx, sy, sz = int(pos[0]), int(pos[1]), int(pos[2] if len(pos) > 2 else 0)
+                
+                # [LOCK] Update world_data safely
+                async with world_data_lock:
+                    for idx, fact in enumerate(extracted_facts):
+                        if not fact or not isinstance(fact, str): continue
+                        
+                        # Create a unique ID for the fact to prevent overwriting
+                        fact_hash = abs(hash(fact)) % 10000
+                        fact_id = f"fact_{sx}_{sy}_{sz}_{datetime.now().strftime('%H%M%S')}_{idx}_{fact_hash}"
+                        
+                        fact_obj = {
+                            "id": fact_id,
+                            "name": "Established Fact",
+                            "position": [sx, sy, sz],
+                            "description": fact,
+                            "properties": {
+                                "kind": "fact",
+                                "actor": display_name,
+                                "timestamp": datetime.now().isoformat()
+                            }
                         }
-                    }
-                    world_data["objects"][fact_id] = fact_obj
-                    if db_instance is None:
-                        db_instance = await get_db()
-                    await db_instance.save_object(fact_id, fact_obj)
-                    persisted = True
-                    persisted_reason = "fact_extraction"
+                        
+                        # Memory update
+                        world_data["objects"][fact_id] = fact_obj
+                        
+                        # Add to task list for DB
+                        fact_tasks.append((fact_id, fact_obj.copy()))
+                        
+                        persisted = True
+                        persisted_reason = "fact_extraction"
+                
+                # DB Update (Outside Lock)
+                if db_instance is None:
+                    db_instance = await get_db()
+                
+                for fid, fobj in fact_tasks:
+                    await db_instance.save_object(fid, fobj)
+                    
             except Exception as e:
                 print(f"[FACT ERROR] Failed to persist extracted facts: {e}")
 
@@ -3958,47 +4072,61 @@ async def apply_world_update_async(update: dict):
     if db_instance is None:
         db_instance = await get_db()
     
-    # 1. Objects dictionary validation
-    if "objects" not in world_data:
-        world_data["objects"] = {}
+    # DB Tasks
+    tasks_save = []
+    tasks_delete = []
 
-    # 2. Handle Creation
-    creates = update.get("create", [])
-    if isinstance(creates, list):
-        for item in creates:
-            if isinstance(item, dict) and "id" in item:
-                # Ensure position is integers
-                if "position" in item:
-                    item["position"] = ensure_int_position(item["position"])
-                world_data["objects"][item["id"]] = item
-                await db_instance.save_object(item["id"], item)
+    # [LOCK] Memory Update Critical Section
+    async with world_data_lock:
+        # 1. Objects dictionary validation
+        if "objects" not in world_data:
+            world_data["objects"] = {}
+
+        # 2. Handle Creation
+        creates = update.get("create", [])
+        if isinstance(creates, list):
+            for item in creates:
+                if isinstance(item, dict) and "id" in item:
+                    # Ensure position is integers
+                    if "position" in item:
+                        item["position"] = ensure_int_position(item["position"])
+                    world_data["objects"][item["id"]] = item
+                    tasks_save.append((item["id"], item.copy())) # Copy for DB
+        
+        # 3. Handle Destruction
+        destroys = update.get("destroy", [])
+        if isinstance(destroys, list):
+            for item_id in destroys:
+                if item_id in world_data["objects"]:
+                    obj = world_data["objects"][item_id]
+                    if not obj.get("indestructible", False):
+                        del world_data["objects"][item_id]
+                        tasks_delete.append(item_id)
+        
+        # 4. Handle Modification
+        modifies = update.get("modify", {})
+        if isinstance(modifies, dict):
+            for item_id, changes in modifies.items():
+                # Strict existence check
+                if item_id in world_data["objects"]:
+                    if not isinstance(changes, dict) or len(changes) == 0:
+                        continue
+                    if "position" in changes:
+                        changes["position"] = ensure_int_position(changes["position"])
+                    
+                    # Apply changes
+                    world_data["objects"][item_id].update(changes)
+                    tasks_save.append((item_id, world_data["objects"][item_id].copy())) # Copy for DB
+
+    # [LOCK END] - Process DB tasks outside lock
     
-    # 3. Handle Destruction
-    destroys = update.get("destroy", [])
-    if isinstance(destroys, list):
-        for item_id in destroys:
-            if item_id in world_data["objects"]:
-                obj = world_data["objects"][item_id]
-                if not obj.get("indestructible", False):
-                    del world_data["objects"][item_id]
-                    await db_instance.delete_object(item_id)
-    
-    # 4. Handle Modification
-    modifies = update.get("modify", {})
-    if isinstance(modifies, dict):
-        for item_id, changes in modifies.items():
-            # Strict existence check to prevent KeyErrors or invalid object updates
-            if item_id in world_data["objects"]:
-                # Skip no-op updates to avoid unnecessary DB writes
-                if not isinstance(changes, dict) or len(changes) == 0:
-                    continue
-                # Ensure position is integers if being modified
-                if "position" in changes:
-                    changes["position"] = ensure_int_position(changes["position"])
-                
-                # Apply changes
-                world_data["objects"][item_id].update(changes)
-                await db_instance.save_object(item_id, world_data["objects"][item_id])
+    # Process saves
+    for obj_id, obj_data in tasks_save:
+        await db_instance.save_object(obj_id, obj_data)
+        
+    # Process deletes
+    for obj_id in tasks_delete:
+        await db_instance.delete_object(obj_id)
 
 def apply_world_update(update: dict):
     """월드 상태 업데이트 (동기 - 캐시만, 호환성 유지)"""
