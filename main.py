@@ -3816,7 +3816,28 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         # Append mentioned objects to narrative for pinning
         mentioned_objects = result.get("mentioned_objects", [])
         if mentioned_objects and isinstance(mentioned_objects, list):
-             valid_mentions = [str(m) for m in mentioned_objects if m and isinstance(m, str)]
+             # Filter valid mentions (must exist in world or be created now)
+             existing_names = set()
+             
+             # 1. Newly created objects
+             if isinstance(creates, list):
+                 for item in creates:
+                     if isinstance(item, dict) and item.get("name"):
+                         existing_names.add(str(item["name"]).lower())
+            
+             # 2. Existing objects (Lock required for thread safety)
+             async with world_data_lock:
+                 for obj in world_data.get("objects", {}).values():
+                     if obj.get("name"):
+                         existing_names.add(str(obj["name"]).lower())
+
+             valid_mentions = []
+             for m in mentioned_objects:
+                 if m and isinstance(m, str):
+                     name_str = str(m)
+                     if name_str.lower() in existing_names:
+                         valid_mentions.append(name_str)
+            
              unique_mentions = sorted(list(set(valid_mentions)))
              if unique_mentions:
                  narrative += "\n\n[📍 PINNABLE: " + ", ".join(f"{name}" for name in unique_mentions) + "]"
