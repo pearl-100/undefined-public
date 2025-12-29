@@ -147,7 +147,25 @@ class Database:
         await self._connection.execute("PRAGMA busy_timeout=5000")
         
         await self._connection.executescript(SCHEMA)
-        await self._connection.commit()
+        
+        # === Migration: Ensure new columns exist for existing users ===
+        try:
+            # Check for attributes column
+            async with self.conn.execute("PRAGMA table_info(users)") as cursor:
+                columns = [row["name"] for row in await cursor.fetchall()]
+                
+                if "attributes" not in columns:
+                    print("[DB MIGRATION] Adding 'attributes' column to users table...")
+                    await self.conn.execute("ALTER TABLE users ADD COLUMN attributes TEXT DEFAULT '{}'")
+                
+                if "skills" not in columns:
+                    print("[DB MIGRATION] Adding 'skills' column to users table...")
+                    await self.conn.execute("ALTER TABLE users ADD COLUMN skills TEXT DEFAULT '{}'")
+                    
+            await self._connection.commit()
+        except Exception as e:
+            print(f"[DB MIGRATION ERROR] {e}")
+            
         print(f"[DB] Connected to {self.db_path} (WAL mode enabled)")
     
     async def close(self):
