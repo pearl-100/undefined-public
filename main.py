@@ -1173,6 +1173,7 @@ class ConnectionManager:
         world_data["users"][uuid]["pinned_ids"] = player.get("pinned_ids", [])
         world_data["users"][uuid]["is_dead"] = player.get("is_dead", False)
         world_data["users"][uuid]["time_offset"] = player.get("time_offset", 0)
+        world_data["users"][uuid]["last_exercise"] = player.get("last_exercise", {})
         world_data["users"][uuid]["nickname"] = client_id
         
         # Save to SQLite DB
@@ -1764,7 +1765,8 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                     "inventory": {},
                     "attributes": {},
                     "skills": {},
-                    "time_offset": 0
+                    "time_offset": 0,
+                    "last_exercise": {}
                 }
                 user_data = world_data["users"][user_id]
                 is_new_user = False
@@ -1796,7 +1798,8 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 "inventory": {},
                 "attributes": initial_attributes,
                 "skills": {},
-                "time_offset": 0
+                "time_offset": 0,
+                "last_exercise": {}
             }
             user_data = world_data["users"][user_id]
             is_new_user = True
@@ -1836,6 +1839,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         "is_dead": world_data["users"][user_id].get("is_dead", False),
         "pinned_ids": world_data["users"][user_id].get("pinned_ids", []),
         "time_offset": world_data["users"][user_id].get("time_offset", 0),
+        "last_exercise": world_data["users"][user_id].get("last_exercise", {}),
         "joined_at": datetime.now().isoformat()
     }
     
@@ -1970,7 +1974,8 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                                     "inventory": {},
                                     "attributes": current_user.get("attributes", {}) if isinstance(current_user, dict) else {},
                                     "skills": current_user.get("skills", {}) if isinstance(current_user, dict) else {},
-                                    "time_offset": current_user.get("time_offset", 0) if isinstance(current_user, dict) else 0
+                                    "time_offset": current_user.get("time_offset", 0) if isinstance(current_user, dict) else 0,
+                                    "last_exercise": current_user.get("last_exercise", {}) if isinstance(current_user, dict) else {}
                                 }
                                 # Prepare data for DB save
                                 user_data_for_db = world_data["users"][user_id].copy()
@@ -4061,6 +4066,8 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
             # === Attribute Change Handler (Evolution System conceptualized by the User) ===
             if "attribute_change" in user_update and isinstance(user_update["attribute_change"], dict):
                 attrs = player.get("attributes", {})
+                last_exercise = player.get("last_exercise", {})
+                
                 for attr, change in user_update["attribute_change"].items():
                     if not isinstance(change, (int, float)):
                         continue
@@ -4069,11 +4076,47 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
                     # Ensure the attribute exists before adding (defensive)
                     if attr_name not in attrs:
                         attrs[attr_name] = 5.0
-                        
+                    
                     # Precise growth with floating point safety
                     new_val = float(attrs[attr_name]) + float(change)
-                    attrs[attr_name] = round(max(1.0, min(20.0, new_val)), 1)
+                    
+                    # No absolute maximum cap. Growth is limited only by logic and tech requirements.
+                    # Minimum stays at 1.0 for biological viability.
+                    attrs[attr_name] = round(max(1.0, new_val), 1)
+                    
+                    # Update last exercise timestamp for this attribute
+                    last_exercise[attr_name] = player.get("time_offset", 0)
+                
                 player["attributes"] = attrs
+                player["last_exercise"] = last_exercise
+
+            # === Attribute Decay (The Law of Entropy) ===
+            # Apply decay based on elapsed personal time since last exercise
+            current_time = player.get("time_offset", 0)
+            last_exercise = player.get("last_exercise", {})
+            attrs = player.get("attributes", {})
+            
+            decay_occured = False
+            for attr_name, val in list(attrs.items()):
+                last_time = last_exercise.get(attr_name, current_time)
+                elapsed_hours = current_time - last_time
+                
+                if elapsed_hours >= 24:
+                    # Decay rates per 24h
+                    rates = {"Endurance": 0.01, "Strength": 0.005, "Intelligence": 0.002, "Agility": 0.002, "Willpower": 0.002}
+                    rate = rates.get(attr_name, 0.002)
+                    
+                    decay_amount = (elapsed_hours // 24) * rate
+                    if decay_amount > 0:
+                        attrs[attr_name] = round(max(1.0, val - decay_amount), 3)
+                        # Reset timer to current so we don't double decay next turn unless more time passes
+                        last_exercise[attr_name] = current_time 
+                        decay_occured = True
+            
+            if decay_occured:
+                player["attributes"] = attrs
+                player["last_exercise"] = last_exercise
+                print(f"[ENTROPY] Attributes decayed for {client_id} due to inactivity.")
 
             # === Skill Change Handler (Evolution System conceptualized by the User) ===
             if "skill_change" in user_update and isinstance(user_update["skill_change"], dict):

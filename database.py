@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS users (
     name_set INTEGER DEFAULT 0,
     is_dead INTEGER DEFAULT 0,
     time_offset REAL DEFAULT 0,
+    last_exercise TEXT DEFAULT '{}',
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -166,6 +167,10 @@ class Database:
                 if "time_offset" not in columns:
                     print("[DB MIGRATION] Adding 'time_offset' column to users table...")
                     await self.conn.execute("ALTER TABLE users ADD COLUMN time_offset REAL DEFAULT 0")
+                
+                if "last_exercise" not in columns:
+                    print("[DB MIGRATION] Adding 'last_exercise' column to users table...")
+                    await self.conn.execute("ALTER TABLE users ADD COLUMN last_exercise TEXT DEFAULT '{}'")
                     
             await self._connection.commit()
         except Exception as e:
@@ -216,8 +221,8 @@ class Database:
                 z = position.get("z", 0)
             
             await self.conn.execute("""
-                INSERT INTO users (uuid, nickname, x, y, z, status, inventory, attributes, skills, name_set, is_dead, time_offset)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO users (uuid, nickname, x, y, z, status, inventory, attributes, skills, name_set, is_dead, time_offset, last_exercise)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(uuid) DO UPDATE SET
                     nickname = excluded.nickname,
                     x = excluded.x,
@@ -229,7 +234,8 @@ class Database:
                     skills = excluded.skills,
                     name_set = excluded.name_set,
                     is_dead = excluded.is_dead,
-                    time_offset = excluded.time_offset
+                    time_offset = excluded.time_offset,
+                    last_exercise = excluded.last_exercise
             """, (
                 uuid,
                 data.get("nickname", "Unknown"),
@@ -240,7 +246,8 @@ class Database:
                 skills,
                 1 if data.get("name_set", False) else 0,
                 1 if data.get("is_dead", False) else 0,
-                float(data.get("time_offset", 0))
+                float(data.get("time_offset", 0)),
+                json.dumps(data.get("last_exercise", {}), ensure_ascii=False)
             ))
             await self.conn.commit()
             return True
@@ -268,6 +275,7 @@ class Database:
             "skills": json.loads(row["skills"] or "{}"),
             "is_dead": bool(row["is_dead"]),
             "time_offset": float(row["time_offset"] or 0),
+            "last_exercise": json.loads(row["last_exercise"] or "{}"),
             "created_at": row["created_at"]
         }
     

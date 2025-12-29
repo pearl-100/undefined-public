@@ -169,7 +169,33 @@
     },
     "attribute_engine": {
       "name": "Attribute-Engine (Physical & Mental Potential)",
-      "principle": "Every soul has a unique configuration of potential. Conceptualized by Pathos ★.",
+      "principle": "Attributes are not static trophies; they are dynamic biological states governed by entropy.",
+      "law_of_entropy_decay": {
+        "principle": "Use it or lose it. Attributes slowly decay over time if not exercised.",
+        "decay_rates": {
+          "Endurance": "0.01 per 24 hours of inactivity",
+          "Strength": "0.005 per 24 hours of inactivity",
+          "Intelligence/Agility/Willpower": "0.002 per 24 hours of inactivity"
+        },
+        "note": "Performing actions related to an attribute resets its decay timer and prevents loss."
+      },
+      "law_of_diminishing_returns": {
+        "principle": "The stronger you are, the harder it is to grow. Growth follows a logarithmic curve.",
+        "tiers": {
+          "0_to_10": "Linear growth (Fast)",
+          "10_to_15": "Struggling growth (Slow)",
+          "15_to_20": "Elite plateau (Extremely Slow)",
+          "20_plus": "Transhuman zone (Impossible without specialized technology)"
+        }
+      },
+      "limit_breaking": {
+        "principle": "There are no absolute caps. Human potential is infinite but exponentially harder to unlock.",
+        "milestones": {
+          "20.0": "NATURAL LIMIT - Requires basic cybernetics (Neuralink, AI Core) to bypass without extreme risk.",
+          "50.0": "SYNTHETIC LIMIT - Requires advanced whole-body prosthesis or quantum neural integration.",
+          "100.0": "TRANSCENDENT LIMIT - Requires exotic matter or extraterrestrial energy sources."
+        }
+      },
       "attributes": {
         "Strength": "Physical power, carrying capacity, melee damage.",
         "Agility": "Speed, reflexes, balance, stealth, accuracy.",
@@ -440,7 +466,8 @@
       "name": "Calculation Protocol",
       "rule": "For ANY action requiring mathematical computation (trading, physics, gambling, probability, distance, stats growth, time passage), you MUST provide a 'python_code' string to ensure accuracy.",
       "requirement": "The python code must define 'calculated_value' (general), 'inventory_change' (items), 'attribute_change' (stats), 'skill_change' (skills), 'position_delta' (movement), or 'time_skip_hours' (time).",
-      "example": "python_code: 'dist = 5.0; speed = 1.0; time_skip_hours = dist / speed; position_delta = [0, int(dist), 0]'"
+      "note": "When calculating 'attribute_change', you MUST apply the Law of Diminishing Returns based on the current attribute level.",
+      "example": "python_code: 'effort = 0.5; current_str = 16.0; attribute_change = {\"Strength\": 0.01}'"
     },
     "language": {
       "name": "English-Only Output Protocol [CRITICAL]",
