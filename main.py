@@ -3859,7 +3859,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         error_content = "[ERROR] AI is not responding. Please try again later."
         
         error_lower = error_msg.lower()
-        if "api_key" in error_lower or "authentication" in error_lower or "invalid" in error_lower:
+        if "api_key" in error_lower or "auth" in error_lower or "invalid" in error_lower or "incorrect" in error_lower:
             error_content = "[ERROR] Invalid API key. Please check your settings."
         elif "model" in error_lower or "not found" in error_lower:
             error_content = f"[ERROR] Model '{model}' not found. Please verify the model name."
