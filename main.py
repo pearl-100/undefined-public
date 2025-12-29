@@ -1166,6 +1166,7 @@ class ConnectionManager:
         world_data["users"][uuid]["inventory"] = player.get("inventory", {})
         world_data["users"][uuid]["attributes"] = player.get("attributes", {})
         world_data["users"][uuid]["skills"] = player.get("skills", {})
+        world_data["users"][uuid]["pinned_ids"] = player.get("pinned_ids", [])
         world_data["users"][uuid]["is_dead"] = player.get("is_dead", False)
         world_data["users"][uuid]["nickname"] = client_id
         
@@ -1829,6 +1830,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         "attributes": world_data["users"][user_id].get("attributes", {}),
         "skills": world_data["users"][user_id].get("skills", {}),
         "is_dead": world_data["users"][user_id].get("is_dead", False),
+        "pinned_ids": world_data["users"][user_id].get("pinned_ids", []),
         "joined_at": datetime.now().isoformat()
     }
     
@@ -1892,6 +1894,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             "3. THE 7 ENGINES: Your life is sustained and threatened by 7 invisible simulations (Bio, Decay, Weather, etc.). You are fragile. You are mortal.\n"
             "4. PERMANENCE: This is a shared world. What you build, break, or leave behind will remain for others.\n\n"
             "GUIDANCE: You are currently unnamed. Use /look to sense the landfill, or type '/name [YourChoice]' to claim your soul. "
+            "Use '/pin [name]' to remember important things forever. "
             "The Genesis Monolith (0,0,0) pulses in the distance. Begin your journey."
         )
         await manager.send_personal(json.dumps({
@@ -2056,6 +2059,9 @@ async def handle_command(client_id: str, command: str, api_key: str, model: str 
 /blueprints - View blueprints registry
 /rules - View current world rules
 /move <dir> - Move (north/south/east/west or n/s/e/w)
+/pin <name> - Bookmark important things for AI memory
+/unpin <name> - Remove bookmark
+/pinned - List bookmarks
 /say <msg> - Speak (heard nearby)
 /name <new> - Change nickname
 /respawn - Revive (only when in coma)
@@ -2480,7 +2486,126 @@ Design new objects to leave your name in the registry!"""
             "content": blueprints_text,
             "timestamp": datetime.now().isoformat()
         }), client_id)
+    
+    elif cmd == "/pin":
+        target_name = args.strip()
+        if not target_name:
+            await manager.send_personal(json.dumps({
+                "type": "error",
+                "content": "[ERROR] Usage: /pin <object_name>",
+                "timestamp": datetime.now().isoformat()
+            }), client_id)
+            return
+            
+        player = manager.player_data.get(client_id, {})
+        pinned_ids = player.get("pinned_ids", [])
         
+        if len(pinned_ids) >= 10:
+            await manager.send_personal(json.dumps({
+                "type": "error",
+                "content": "[ERROR] You can only pin up to 10 objects.",
+                "timestamp": datetime.now().isoformat()
+            }), client_id)
+            return
+
+        # Search for object in world_data
+        found_obj = None
+        async with world_data_lock:
+            for obj_id, obj in world_data.get("objects", {}).items():
+                if obj.get("name", "").lower() == target_name.lower():
+                    found_obj = obj
+                    break
+        
+        if found_obj:
+            obj_id = found_obj["id"]
+            if obj_id not in pinned_ids:
+                pinned_ids.append(obj_id)
+                player["pinned_ids"] = pinned_ids
+                await manager.save_player_to_db(client_id)
+                await manager.send_personal(json.dumps({
+                    "type": "system",
+                    "content": f"📌 [PINNED] AI will now always remember '{found_obj['name']}'.",
+                    "timestamp": datetime.now().isoformat()
+                }), client_id)
+            else:
+                await manager.send_personal(json.dumps({
+                    "type": "error",
+                    "content": f"[ERROR] '{found_obj['name']}' is already pinned.",
+                    "timestamp": datetime.now().isoformat()
+                }), client_id)
+        else:
+            await manager.send_personal(json.dumps({
+                "type": "error",
+                "content": f"[ERROR] Object '{target_name}' not found. You must discover it first.",
+                "timestamp": datetime.now().isoformat()
+            }), client_id)
+
+    elif cmd == "/unpin":
+        target_name = args.strip()
+        if not target_name:
+            await manager.send_personal(json.dumps({
+                "type": "error",
+                "content": "[ERROR] Usage: /unpin <object_name>",
+                "timestamp": datetime.now().isoformat()
+            }), client_id)
+            return
+
+        player = manager.player_data.get(client_id, {})
+        pinned_ids = player.get("pinned_ids", [])
+        
+        removed = False
+        target_obj_name = ""
+        
+        async with world_data_lock:
+            for pid in list(pinned_ids):
+                obj = world_data.get("objects", {}).get(pid)
+                if obj and obj.get("name", "").lower() == target_name.lower():
+                    pinned_ids.remove(pid)
+                    target_obj_name = obj.get("name")
+                    removed = True
+                    break
+        
+        if removed:
+            player["pinned_ids"] = pinned_ids
+            await manager.save_player_to_db(client_id)
+            await manager.send_personal(json.dumps({
+                "type": "system",
+                "content": f"📍 [UNPINNED] '{target_obj_name}' removed from priority memory.",
+                "timestamp": datetime.now().isoformat()
+            }), client_id)
+        else:
+            await manager.send_personal(json.dumps({
+                "type": "error",
+                "content": f"[ERROR] '{target_name}' is not in your pinned list.",
+                "timestamp": datetime.now().isoformat()
+            }), client_id)
+
+    elif cmd == "/pinned":
+        player = manager.player_data.get(client_id, {})
+        pinned_ids = player.get("pinned_ids", [])
+        
+        if not pinned_ids:
+            await manager.send_personal(json.dumps({
+                "type": "system",
+                "content": "[📌 PINNED LIST] Empty. Use /pin <name> to bookmark important things.",
+                "timestamp": datetime.now().isoformat()
+            }), client_id)
+            return
+            
+        pinned_names = []
+        async with world_data_lock:
+            for pid in pinned_ids:
+                obj = world_data.get("objects", {}).get(pid)
+                if obj:
+                    pos = obj.get("position", [0, 0, 0])
+                    pinned_names.append(f"• {obj['name']} ({pos[0]}, {pos[1]}, {pos[2] if len(pos) > 2 else 0})")
+        
+        await manager.send_personal(json.dumps({
+            "type": "system",
+            "content": f"[📌 PINNED LIST]\n{chr(10).join(pinned_names)}",
+            "timestamp": datetime.now().isoformat()
+        }), client_id)
+    
     elif cmd == "/rules":
         # Current world rules (load from world_rules.json in real-time)
         rules = load_rules()
@@ -2912,6 +3037,8 @@ def ensure_player_data(client_id: str):
             player["attributes"] = DEFAULT_ATTRIBUTES.copy()
         if "skills" not in player:
             player["skills"] = {}
+        if "pinned_ids" not in player:
+            player["pinned_ids"] = []
             
     return manager.player_data[client_id]
 
@@ -3380,6 +3507,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
     nearby_objects = {}
     known_locations_list = []
     recent_history_list = []
+    pinned_objects = {}  # Priority memory for pinned entities
     
     # Pre-fetch registries (copy to avoid lock contention during long JSON dumps if necessary, 
     # though here we just access them quickly)
@@ -3387,6 +3515,14 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
     object_types_registry_data = {}
 
     async with world_data_lock:
+        # 0. Get user's pinned objects regardless of distance
+        pinned_ids = player.get("pinned_ids", [])
+        if pinned_ids:
+            for pid in pinned_ids:
+                p_obj = world_data.get("objects", {}).get(pid)
+                if p_obj:
+                    pinned_objects[pid] = p_obj.copy() if isinstance(p_obj, dict) else p_obj
+
         # 1. Nearby objects
         for obj_id, obj in world_data.get("objects", {}).items():
             obj_pos = ensure_int_position(obj.get("position", [999, 999]))
@@ -3435,6 +3571,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
     
     world_state = json.dumps({
         "nearby_objects": nearby_objects,
+        "pinned_important_entities": pinned_objects,  # AI priority memory
         "known_locations": location_list,
         "recent_history": recent_history_list,
         "current_time": datetime.now().isoformat()
