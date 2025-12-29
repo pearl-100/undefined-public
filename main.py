@@ -1763,13 +1763,10 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                     "status": "Healthy",
                     "inventory": {},
                     "attributes": {},
-                    "skills": {}
+                    "skills": {},
+                    "time_offset": 0
                 }
-                # Lock 안에서 저장 호출 (주의: save_world_data 내부에서도 락을 잡는지 확인 필요. 
-                # 현재 save_world_data 함수는 없거나 JSONRepository 사용. 
-                # repository.save_user 는 내부적으로 lock 사용. 재진입 불가하므로 주의)
-                # 여기서는 메모리만 업데이트하고, DB 저장은 락 밖에서 하거나 repository 메소드 수정 필요.
-                # 임시로 메모리 업데이트만 여기서 수행하고, DB 저장은 아래에서 별도로.
+                user_data = world_data["users"][user_id]
                 is_new_user = False
         else:
             # New user: Create nickname + initial position (0, 0, 0)
@@ -1798,8 +1795,10 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 "status": "Healthy",
                 "inventory": {},
                 "attributes": initial_attributes,
-                "skills": {}
+                "skills": {},
+                "time_offset": 0
             }
+            user_data = world_data["users"][user_id]
             is_new_user = True
             
     # DB Save (Outside Lock if possible, or ensure thread safety)
@@ -1836,6 +1835,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         "skills": world_data["users"][user_id].get("skills", {}),
         "is_dead": world_data["users"][user_id].get("is_dead", False),
         "pinned_ids": world_data["users"][user_id].get("pinned_ids", []),
+        "time_offset": world_data["users"][user_id].get("time_offset", 0),
         "joined_at": datetime.now().isoformat()
     }
     
@@ -1961,14 +1961,16 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                                 all_nicknames.add(new_nickname)
                                 
                                 # Update DB (Memory update)
+                                current_user = world_data["users"][user_id]
                                 world_data["users"][user_id] = {
                                     "nickname": new_nickname, 
                                     "name_set": True, 
                                     "position": saved_position, 
                                     "status": "Healthy", 
                                     "inventory": {},
-                                    "attributes": user_data.get("attributes", {}),
-                                    "skills": user_data.get("skills", {})
+                                    "attributes": current_user.get("attributes", {}) if isinstance(current_user, dict) else {},
+                                    "skills": current_user.get("skills", {}) if isinstance(current_user, dict) else {},
+                                    "time_offset": current_user.get("time_offset", 0) if isinstance(current_user, dict) else 0
                                 }
                                 # Prepare data for DB save
                                 user_data_for_db = world_data["users"][user_id].copy()
