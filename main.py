@@ -3863,8 +3863,12 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
             error_content = "[ERROR] Invalid API key. Please check your settings."
         elif "model" in error_lower or "not found" in error_lower:
             error_content = f"[ERROR] Model '{model}' not found. Please verify the model name."
-        elif "rate" in error_lower or "limit" in error_lower or "quota" in error_lower or "budget" in error_lower or "exceeded" in error_lower:
-            error_content = "💸 Budget exceeded. Please try again later."
+        elif "quota" in error_lower or "budget" in error_lower:
+            error_content = "💸 Budget/Quota exceeded. Please check your API key balance."
+        elif "rate" in error_lower:
+            error_content = "⏳ Rate limit exceeded (Too many requests). Please slow down."
+        elif "limit" in error_lower or "exceeded" in error_lower:
+            error_content = "⚠️ API usage limit exceeded. Please check your provider settings."
         elif "timeout" in error_lower or "timed out" in error_lower:
             error_content = "[ERROR] Request timed out. Please try again."
         elif "connection" in error_lower or "network" in error_lower:
