@@ -25,6 +25,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
 import litellm
+from litellm import exceptions
 
 # SQLite Database
 from database import Database, migrate_from_json, get_db, close_db
@@ -3390,6 +3391,13 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
             obj_pos = ensure_int_position(obj.get("position", [999, 999]))
             if abs(obj_pos[0] - pos[0]) <= 100 and abs(obj_pos[1] - pos[1]) <= 100:
                 nearby_objects[obj_id] = obj.copy() if isinstance(obj, dict) else obj # Shallow copy safe for now
+        
+        # Limit nearby objects to prevent context overflow (Max 50)
+        if len(nearby_objects) > 50:
+            nearby_objects = dict(sorted(
+                nearby_objects.items(), 
+                key=lambda item: abs(item[1].get("position", [0,0,0])[0] - pos[0]) + abs(item[1].get("position", [0,0,0])[1] - pos[1])
+            )[:50])
 
         # 2. Known Locations
         for obj_id, obj in world_data.get("objects", {}).items():
@@ -3407,7 +3415,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
             })
             
         # 3. History
-        recent_history_list = list(world_data.get("history", []))[-500:] # Copy list
+        recent_history_list = list(world_data.get("history", []))[-50:] # Reduced history to save context
         
         # 4. Registries
         materials = world_data.get("materials", {})
@@ -3416,9 +3424,9 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         object_types = world_data.get("object_types", {})
         object_types_registry_data = {k: v for k, v in object_types.items() if k != "_README"}
 
-    # Sort by distance and take top 500 (Outside Lock)
+    # Sort by distance and take top 150 (Outside Lock)
     known_locations_list.sort(key=lambda x: x["distance"])
-    known_locations = known_locations_list[:500]
+    known_locations = known_locations_list[:150]
     
     # Convert to concise format: "Name(x,y,z)"
     location_list = [f"{loc['name']}({loc['position'][0]},{loc['position'][1]},{loc['position'][2]})" 
@@ -3493,6 +3501,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
             # Wrap user action in XML tags to prevent basic prompt injection
             user_prompt = f"<player_action>\nPlayer '{client_id}': {action}\n</player_action>\n\nProcess this action through all simulation engines and respond in the required JSON format."
             
+            # LiteLLM 호출 (재시도 및 에러 처리 포함)
             response = await asyncio.wait_for(
                 litellm.acompletion(
                     model=model,
@@ -3502,14 +3511,52 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
                         {"role": "user", "content": user_prompt}
                     ],
                     temperature=0.8,
-                    max_tokens=4096
+                    max_tokens=4096,
+                    num_retries=2
                 ),
                 timeout=60.0
             )
+        except exceptions.RateLimitError:
+            await manager.send_personal(json.dumps({
+                "type": "error",
+                "content": "⏳ Rate limit exceeded. Please wait a moment and try again.",
+                "timestamp": datetime.now().isoformat()
+            }), client_id)
+            return
+        except exceptions.ContextWindowExceededError:
+            await manager.send_personal(json.dumps({
+                "type": "error",
+                "content": "⚠️ Memory full. The conversation history is too long.",
+                "timestamp": datetime.now().isoformat()
+            }), client_id)
+            return
+        except exceptions.AuthenticationError:
+            await manager.send_personal(json.dumps({
+                "type": "error",
+                "content": "[ERROR] Invalid API Key. Please check your settings.",
+                "timestamp": datetime.now().isoformat()
+            }), client_id)
+            return
+        except exceptions.BadRequestError as e:
+            # 모델명 오류 등
+            await manager.send_personal(json.dumps({
+                "type": "error",
+                "content": f"[ERROR] Bad Request: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            }), client_id)
+            return
         except asyncio.TimeoutError:
             await manager.send_personal(json.dumps({
                 "type": "error",
                 "content": "[ERROR] AI is not responding. Please try again later. (60s timeout)",
+                "timestamp": datetime.now().isoformat()
+            }), client_id)
+            return
+        except Exception as e:
+            print(f"[LiteLLM UNEXPECTED ERROR] {e}")
+            await manager.send_personal(json.dumps({
+                "type": "error",
+                "content": f"[ERROR] AI Error: {str(e)}",
                 "timestamp": datetime.now().isoformat()
             }), client_id)
             return
@@ -3727,7 +3774,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         if user_update:
             if "status_desc" in user_update:
                 player["status"] = user_update["status_desc"]
-            if "inventory_change" in user_update:
+            if "inventory_change" in user_update and isinstance(user_update["inventory_change"], dict):
                 inv = player.get("inventory", {})
                 for item, change in user_update["inventory_change"].items():
                     # Validate change is a number (AI defensive check)
