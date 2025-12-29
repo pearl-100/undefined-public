@@ -191,11 +191,11 @@
       },
       "limit_breaking": {
         "principle": "There are no absolute caps. Human potential is infinite but exponentially harder to unlock.",
-        "decay_protection": {
-          "Intelligence": ["Neuralink", "AI Core", "Quantum Processor"],
-          "Willpower": ["Neuralink", "AI Core", "Mental Shield"],
-          "Strength": ["Cybernetic Limbs", "Exoskeleton", "Power Armor"],
-          "Agility": ["Cybernetic Limbs", "Reflex Booster"]
+        "decay_protection_example": {
+          "Intelligence": ["Examples: Neuralink, AI Core"],
+          "Willpower": ["Examples: Mental Shield"],
+          "Strength": ["Examples: Exoskeleton"],
+          "Note": "This list is not exhaustive. ANY item with 'protects_decay' property will work."
         },
         "milestones": {
           "20.0": "NATURAL LIMIT - Requires basic cybernetics (Neuralink, AI Core) to bypass without extreme risk.",
