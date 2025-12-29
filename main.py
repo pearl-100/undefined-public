@@ -266,6 +266,8 @@ Example:
   "user_update": { 
     "status_desc": "Physical AND mental state. NO NUMBERS.",
     "inventory_change": { "item_name": +1 or -1 },
+    "attribute_change": { "Strength": +0.1 },
+    "skill_change": { "Medicine": +1 },
     "position_delta": [dx, dy, dz] or null,
     "is_dead": false
   },
@@ -1170,6 +1172,7 @@ class ConnectionManager:
         world_data["users"][uuid]["skills"] = player.get("skills", {})
         world_data["users"][uuid]["pinned_ids"] = player.get("pinned_ids", [])
         world_data["users"][uuid]["is_dead"] = player.get("is_dead", False)
+        world_data["users"][uuid]["time_offset"] = player.get("time_offset", 0)
         world_data["users"][uuid]["nickname"] = client_id
         
         # Save to SQLite DB
@@ -1882,7 +1885,8 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     pos_x = int(saved_position.get("x", 0))
     pos_y = int(saved_position.get("y", 0)) 
     pos_z = int(saved_position.get("z", 0))
-    location_info = get_location_description([pos_x, pos_y, pos_z])
+    offset = float(user_data.get("time_offset", 0))
+    location_info = get_location_description([pos_x, pos_y, pos_z], offset)
     
     # Special tutorial guidance for new users (Pathos & User design)
     # Only show to users who haven't set their name yet (is_new_user == True)
@@ -3124,7 +3128,8 @@ async def handle_move(client_id: str, direction: str):
                     "n": "NORTH", "s": "SOUTH", "e": "EAST", "w": "WEST"}
     
     # Get location description
-    location_desc = get_location_description(new_pos)
+    offset = player.get("time_offset", 0)
+    location_desc = get_location_description(new_pos, offset)
     move_msg = f"You move {direction_en[direction]}.\n{location_desc}"
     
     await manager.send_personal(json.dumps({
@@ -3134,9 +3139,9 @@ async def handle_move(client_id: str, direction: str):
         "timestamp": datetime.now().isoformat()
     }), client_id)
 
-def get_world_time(x: int) -> dict:
-    """Calculate world time based on X coordinate (Timezone offset)"""
-    now = datetime.now()
+def get_world_time(x: int, offset_hours: float = 0) -> dict:
+    """Calculate world time based on X coordinate and player's personal time offset"""
+    now = datetime.now() + timedelta(hours=offset_hours)
     hour = now.hour
     minute = now.minute
     # 1 hour shift per 10 X units
@@ -3229,11 +3234,12 @@ def get_biome(x: int, y: int) -> dict:
                     "description": "Gray plains as if scorched by fire. Ash drifts in the wind.",
                     "ambient": "Lonely wind, ash crunching underfoot"}
 
-def get_weather(x: int, y: int) -> dict:
+def get_weather(x: int, y: int, offset_hours: float = 0) -> dict:
     """좌표와 시간에 따른 날씨 생성 (Meteorological Engine)"""
     # 시간 기반 시드 (같은 시간대에는 같은 날씨)
-    hour = datetime.now().hour
-    day = datetime.now().day
+    now = datetime.now() + timedelta(hours=offset_hours)
+    hour = now.hour
+    day = now.day
     weather_seed = abs(x * 31 + y * 17 + hour * 7 + day * 3) % 100
     
     # 기후대 결정
@@ -3337,7 +3343,7 @@ def get_weather(x: int, y: int) -> dict:
             weather["description"] = "Calm weather. No notable conditions."
     
     # Time-based additional effects
-    time_info = get_world_time(x)
+    time_info = get_world_time(x, offset_hours)
     if time_info["period"] == "NIGHT":
         weather["visibility"] = "dark" if weather["visibility"] == "clear" else weather["visibility"]
         weather["effects"].append("darkness")
@@ -3365,13 +3371,13 @@ def get_altitude_description(z: int) -> str:
     else:
         return "Stratosphere"
 
-def get_location_description(position: List[int]) -> str:
-    """Generate simple description for location (HUD) - with z-axis"""
+def get_location_description(position: List[int], offset_hours: float = 0) -> str:
+    """Generate simple description for location (HUD) - with z-axis and time offset"""
     x = position[0] if len(position) > 0 else 0
     y = position[1] if len(position) > 1 else 0
     z = position[2] if len(position) > 2 else 0
     
-    time_info = get_world_time(x)
+    time_info = get_world_time(x, offset_hours)
     biome = get_biome(x, y)
     altitude = get_altitude_description(z)
     
@@ -3387,14 +3393,18 @@ def get_location_description(position: List[int]) -> str:
 
 async def get_location_description_detailed(position: List[int], client_id: str) -> str:
     """Detailed location description (5 senses + weather) - with z-axis"""
-    global world_data
+    global world_data, manager
     x = position[0] if len(position) > 0 else 0
     y = position[1] if len(position) > 1 else 0
     z = position[2] if len(position) > 2 else 0
     
-    time_info = get_world_time(x)
+    # Get player's personal time offset
+    player = manager.player_data.get(client_id, {})
+    offset = player.get("time_offset", 0)
+    
+    time_info = get_world_time(x, offset)
     biome = get_biome(x, y)
-    weather = get_weather(x, y)
+    weather = get_weather(x, y, offset)
     
     # Check nearby objects
     nearby_objects = []
@@ -3629,14 +3639,16 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
     }, ensure_ascii=False)
     
     # Location context (biome, time, weather)
-    time_info = get_world_time(pos[0])
+    offset = player.get("time_offset", 0)
+    time_info = get_world_time(pos[0], offset)
     biome = get_biome(pos[0], pos[1])
-    weather = get_weather(pos[0], pos[1])
+    weather = get_weather(pos[0], pos[1], offset)
     location_context = json.dumps({
         "biome": biome,
         "time": time_info,
         "weather": weather,
-        "coordinates": pos
+        "coordinates": pos,
+        "personal_time_offset": offset
     }, ensure_ascii=False)
     
     # Materials registry (For Quick Craft)
@@ -3871,6 +3883,20 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
                     if "user_update" not in result: result["user_update"] = {}
                     result["user_update"]["inventory_change"] = safe_locals["inventory_change"]
                     print(f"[MATH VERIFIED] Python calculated inventory change: {safe_locals['inventory_change']}")
+
+                # 3. Check for Evolution variables (Stats growth)
+                for var_name in ["attribute_change", "skill_change", "position_delta"]:
+                    if var_name in safe_locals and isinstance(safe_locals[var_name], (dict, list)):
+                        if "user_update" not in result: result["user_update"] = {}
+                        result["user_update"][var_name] = safe_locals[var_name]
+                        print(f"[MATH VERIFIED] Python calculated {var_name}: {safe_locals[var_name]}")
+                
+                # 4. Check for Time variables
+                if "time_skip_hours" in safe_locals:
+                    hours = float(safe_locals["time_skip_hours"])
+                    player["time_offset"] = player.get("time_offset", 0) + hours
+                    narrative += f"\n\n[⏰ TIME PASSED: {hours} hours]"
+                    print(f"[MATH VERIFIED] {client_id} time skip: {hours}h (Total offset: {player['time_offset']}h)")
                     
             except Exception as e:
                 print(f"[MATH ERROR] Failed to execute AI python code: {e}")

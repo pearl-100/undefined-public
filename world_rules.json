@@ -438,9 +438,9 @@
     },
     "calculation_protocol": {
       "name": "Calculation Protocol",
-      "rule": "For ANY action requiring mathematical computation (trading, physics, gambling, probability, distance, stats), you MUST provide a 'python_code' string to ensure accuracy.",
-      "requirement": "The python code must define 'calculated_value' (for general numbers) or 'inventory_change' (for items).",
-      "example": "python_code: 'import random; calculated_value = random.randint(1, 6) * 10'"
+      "rule": "For ANY action requiring mathematical computation (trading, physics, gambling, probability, distance, stats growth, time passage), you MUST provide a 'python_code' string to ensure accuracy.",
+      "requirement": "The python code must define 'calculated_value' (general), 'inventory_change' (items), 'attribute_change' (stats), 'skill_change' (skills), 'position_delta' (movement), or 'time_skip_hours' (time).",
+      "example": "python_code: 'dist = 5.0; speed = 1.0; time_skip_hours = dist / speed; position_delta = [0, int(dist), 0]'"
     },
     "language": {
       "name": "English-Only Output Protocol [CRITICAL]",
@@ -530,7 +530,7 @@
         "example": "With practiced hands, you craft [item_name]."
       },
       "time_skip": {
-        "principle": "DO NOT make user wait in real-time!",
+        "principle": "DO NOT make user wait in real-time! Use 'python_code' to calculate 'time_skip_hours' based on action complexity and distance.",
         "penalties": {
           "1_hour": "mild hunger",
           "3_hours": "significant hunger + thirst",
@@ -660,9 +660,9 @@
         "vehicle": 10,
         "horse": 8
       },
-      "rule": "When user action involves MOVEMENT, you MUST include 'position_delta': [dx, dy, dz] in response. dx/dy/dz are integers representing coordinate change.",
+      "rule": "When user action involves MOVEMENT, you MUST include 'position_delta': [dx, dy, dz] in response. Use 'python_code' to calculate these values based on speed and time to ensure physical consistency.",
       "examples": [
-        {"action": "walk north", "position_delta": [0, 1, 0]},
+        {"action": "walk north for 2 hours", "python_code": "speed = 5; hours = 2; dist = speed * hours; position_delta = [0, dist, 0]; time_skip_hours = hours"},
         {"action": "run east", "position_delta": [3, 0, 0]},
         {"action": "climb up the ladder", "position_delta": [0, 0, 5]},
         {"action": "dig down", "position_delta": [0, 0, -1]},
@@ -729,6 +729,7 @@
       "🚨 BIOME CHECK: Verify requested/found items are POSSIBLE for current coordinates. Impossible items = sarcastic denial.",
       "🚨 INVENTORY CHECK: For crafting, verify materials exist. No materials = failure with mockery.",
       "🚨 TRANSACTION SAFETY: When selling items, ONLY remove the specific item sold. DOUBLE CHECK currency math.",
+      "🚨 EVOLUTION CHECK: If the narrative describes physical training or skill practice, you MUST include 'attribute_change' or 'skill_change' in user_update.",
       "🚨 TOOL CHECK: Barehanded actions = 99% failure rate. Describe the painful consequences.",
       "new_discovery is null by default. Only include when inventing NEW MATERIAL.",
       "new_object_type is null by default. Only include when creating NEW ITEM TYPE.",
