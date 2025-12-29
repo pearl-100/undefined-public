@@ -2993,27 +2993,30 @@ def ensure_int_position(pos) -> list:
     return [x, y, z]
 
 def ensure_player_data(client_id: str):
-    """Initialize player_data if not exists (with z-axis)"""
+    """Initialize player_data if not exists (with z-axis and evolution fields)"""
+    DEFAULT_ATTRIBUTES = {"Strength": 5, "Agility": 5, "Endurance": 5, "Intelligence": 5, "Willpower": 5}
+    
     if client_id not in manager.player_data:
         manager.player_data[client_id] = {
             "id": client_id,
-            "position": [0, 0, 0],  # x, y, z (integers)
+            "position": [0, 0, 0],
             "status": "Healthy",
             "inventory": {},
-            "attributes": {},
+            "attributes": DEFAULT_ATTRIBUTES.copy(),
             "skills": {},
             "joined_at": datetime.now().isoformat()
         }
     else:
+        player = manager.player_data[client_id]
         # Ensure position is valid [x, y, z] integers
-        pos = manager.player_data[client_id].get("position", [0, 0, 0])
-        manager.player_data[client_id]["position"] = ensure_int_position(pos)
+        pos = player.get("position", [0, 0, 0])
+        player["position"] = ensure_int_position(pos)
         
-        # Ensure new fields exist for existing connections
-        if "attributes" not in manager.player_data[client_id]:
-            manager.player_data[client_id]["attributes"] = {}
-        if "skills" not in manager.player_data[client_id]:
-            manager.player_data[client_id]["skills"] = {}
+        # Defensive check: Ensure attributes and skills exist for connected clients
+        if "attributes" not in player or not player["attributes"]:
+            player["attributes"] = DEFAULT_ATTRIBUTES.copy()
+        if "skills" not in player:
+            player["skills"] = {}
             
     return manager.player_data[client_id]
 
@@ -3024,7 +3027,7 @@ def is_supporter(user_id: str) -> bool:
     return user_id in supporters and supporters[user_id].get("is_supporter", False)
 
 async def handle_move(client_id: str, direction: str):
-    """이동 처리"""
+    """Handle movement"""
     direction = direction.lower().strip()
     
     direction_map = {
@@ -3069,36 +3072,30 @@ async def handle_move(client_id: str, direction: str):
     }), client_id)
 
 def get_world_time(x: int) -> dict:
-    """X 좌표에 따른 시간대 계산 (시차 적용)"""
-    hour = datetime.now().hour
-    minute = datetime.now().minute
-    # X 좌표당 1시간 시차 (동쪽이 빠름)
+    """Calculate world time based on X coordinate (Timezone offset)"""
+    now = datetime.now()
+    hour = now.hour
+    minute = now.minute
+    # 1 hour shift per 10 X units
     adjusted_hour = (hour + (x // 10)) % 24
     
     if 5 <= adjusted_hour < 7:
-        period = "새벽"
-        period_en = "DAWN"
+        period = "DAWN"
     elif 7 <= adjusted_hour < 12:
-        period = "오전"
-        period_en = "MORNING"
+        period = "MORNING"
     elif 12 <= adjusted_hour < 14:
-        period = "정오"
-        period_en = "NOON"
+        period = "NOON"
     elif 14 <= adjusted_hour < 18:
-        period = "오후"
-        period_en = "AFTERNOON"
+        period = "AFTERNOON"
     elif 18 <= adjusted_hour < 21:
-        period = "저녁"
-        period_en = "EVENING"
+        period = "EVENING"
     else:
-        period = "밤"
-        period_en = "NIGHT"
+        period = "NIGHT"
     
     return {
         "hour": adjusted_hour,
         "minute": minute,
         "period": period,
-        "period_en": period_en,
         "display": f"{adjusted_hour:02d}:{minute:02d}"
     }
 
@@ -3474,30 +3471,30 @@ async def translate_to_english(text: str, api_key: str, model: str = "gpt-4o") -
         return text  # 에러 시 원본 반환
 
 async def process_action(client_id: str, action: str, api_key: str, model: str = "gpt-4o", is_guest: bool = False):
-    """AI를 통한 행동 판정"""
+    """Action processing via AI"""
     global world_data, db_instance
     
-    # Guest 태그
+    # Guest tag
     display_name = f"[Guest] {client_id}" if is_guest else client_id
     
     player = ensure_player_data(client_id)
     pos = player.get("position", [0, 0])
     
-    # 월드 상태 요약 (주변 오브젝트만)
+    # World state summary (nearby objects only)
     nearby_objects = {}
     for obj_id, obj in world_data.get("objects", {}).items():
         obj_pos = ensure_int_position(obj.get("position", [999, 999]))
         if abs(obj_pos[0] - pos[0]) <= 100 and abs(obj_pos[1] - pos[1]) <= 100:
             nearby_objects[obj_id] = obj
     
-    # === Known Locations (장거리 이동용) ===
-    # 모든 오브젝트의 이름과 좌표를 추출 (거리순 정렬, 최대 30개)
+    # === Known Locations (For long distance travel) ===
+    # Extract names and coordinates of all objects (sorted by distance, max 500)
     all_locations = []
     for obj_id, obj in world_data.get("objects", {}).items():
         obj_name = obj.get("name", obj_id)
         obj_pos = ensure_int_position(obj.get("position", [0, 0, 0]))
         
-        # 현재 위치와의 거리 계산
+        # Calculate distance from current position
         dist = abs(obj_pos[0] - pos[0]) + abs(obj_pos[1] - pos[1]) + abs(obj_pos[2] - (pos[2] if len(pos) > 2 else 0))
         
         all_locations.append({
@@ -3507,11 +3504,11 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
             "distance": dist
         })
     
-    # 거리순 정렬 후 상위 500개만
+    # Sort by distance and take top 500
     all_locations.sort(key=lambda x: x["distance"])
     known_locations = all_locations[:500]
     
-    # 간결한 포맷으로 변환: "Name(x,y,z)"
+    # Convert to concise format: "Name(x,y,z)"
     location_list = [f"{loc['name']}({loc['position'][0]},{loc['position'][1]},{loc['position'][2]})" 
                      for loc in known_locations]
     
@@ -3522,7 +3519,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         "current_time": datetime.now().isoformat()
     }, ensure_ascii=False)
     
-    # 플레이어 상태
+    # Player state
     player_state = json.dumps({
         "id": client_id,
         "position": pos,
@@ -3532,7 +3529,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         "skills": player.get("skills", {})
     }, ensure_ascii=False)
     
-    # 위치 컨텍스트 (바이옴, 시간대, 날씨)
+    # Location context (biome, time, weather)
     time_info = get_world_time(pos[0])
     biome = get_biome(pos[0], pos[1])
     weather = get_weather(pos[0], pos[1])
@@ -3543,7 +3540,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         "coordinates": pos
     }, ensure_ascii=False)
     
-    # 물질 도감 (Quick Craft용)
+    # Materials registry (For Quick Craft)
     materials = world_data.get("materials", {})
     registered_materials = {k: v for k, v in materials.items() if k != "_README"}
     materials_registry = json.dumps({
@@ -3552,7 +3549,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         "note": "Materials in this list can be Quick Crafted (instant craft if you have ingredients)"
     }, ensure_ascii=False)
     
-    # 제작법 도감 (Quick Craft용)
+    # Blueprints registry (For Quick Craft)
     object_types = world_data.get("object_types", {})
     registered_types = {k: v for k, v in object_types.items() if k != "_README"}
     object_types_registry = json.dumps({
@@ -3562,7 +3559,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         "note": "Objects in this list can be Quick Crafted (instant craft if you have materials + facility)"
     }, ensure_ascii=False)
     
-    # 시스템 프롬프트 구성 (매 요청마다 world_rules.json 동적 로드!)
+    # Build system prompt (dynamically load world_rules.json on each request)
     rules = load_rules()
     system_msg = build_system_prompt(
         rules=rules,
@@ -3574,7 +3571,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
     )
     
     try:
-        # 처리 중 메시지
+        # Processing message
         await manager.send_personal(json.dumps({
             "type": "system",
             "content": "[PROCESSING...] Reality responds...",
@@ -3808,7 +3805,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
             if "inventory_change" in user_update:
                 inv = player.get("inventory", {})
                 for item, change in user_update["inventory_change"].items():
-                    # change가 숫자인지 확인 (AI가 잘못된 형식 반환 시 방어)
+                    # Validate change is a number (AI defensive check)
                     if not isinstance(change, (int, float)):
                         continue
                     if item in inv:
@@ -3825,13 +3822,15 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
                 for attr, change in user_update["attribute_change"].items():
                     if not isinstance(change, (int, float)):
                         continue
-                    # Normalizing attribute name (Capitalized)
                     attr_name = attr.capitalize()
-                    if attr_name in attrs:
-                        # Grow slowly (increments like 0.1)
-                        attrs[attr_name] = round(attrs[attr_name] + change, 2)
-                        # Keep attributes within 1-20 range
-                        attrs[attr_name] = max(1, min(20, attrs[attr_name]))
+                    
+                    # Ensure the attribute exists before adding (defensive)
+                    if attr_name not in attrs:
+                        attrs[attr_name] = 5.0
+                        
+                    # Precise growth with floating point safety
+                    new_val = float(attrs[attr_name]) + float(change)
+                    attrs[attr_name] = round(max(1.0, min(20.0, new_val)), 1)
                 player["attributes"] = attrs
 
             # === Skill Change Handler (Evolution System conceptualized by the User) ===
@@ -3898,12 +3897,12 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         if new_object_type and isinstance(new_object_type, dict) and new_object_type.get("id"):
             await handle_new_object_type(new_object_type, client_id)
         
-        # 히스토리 기록 (DB에 저장)
+        # Record history (saved to DB)
         history_entry = {
             "timestamp": datetime.now().isoformat(),
             "actor": client_id,
             "action": action,
-            "result": narrative[:200]  # 요약
+            "result": narrative[:200]  # Summary
         }
         world_data["history"].append(history_entry)
 
@@ -3911,7 +3910,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         if isinstance(world_data.get("history"), list) and len(world_data["history"]) > MAX_IN_MEMORY_HISTORY:
             world_data["history"] = world_data["history"][-MAX_IN_MEMORY_HISTORY:]
         
-        # DB에 로그 저장
+        # Save logs to DB
         if db_instance is None:
             db_instance = await get_db()
         await db_instance.add_log(
@@ -3922,16 +3921,16 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         )
         
     except asyncio.CancelledError:
-        # 태스크 취소 시 조용히 종료
+        # Silently exit on task cancellation
         print(f"[CANCELLED] Action cancelled for {client_id}")
         return
         
     except Exception as e:
         error_msg = str(e)
         print(f"[LiteLLM ERROR] Client: {client_id}, Model: {model}, Error: {error_msg}")
-        print(f"[TRACEBACK]\n{traceback.format_exc()}")  # 상세 에러 위치 출력
+        print(f"[TRACEBACK]\n{traceback.format_exc()}")  # Print detailed traceback
         
-        # 에러 유형별 사용자 친화적 메시지
+        # User-friendly messages by error type
         error_content = "[ERROR] AI is not responding. Please try again later."
         
         error_lower = error_msg.lower()

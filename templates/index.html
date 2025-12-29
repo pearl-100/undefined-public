@@ -522,18 +522,17 @@
         const COMMANDS = [
             { cmd: '/do', desc: '<action> - AI judgment' },
             { cmd: '/look', desc: 'Observe surroundings (5 senses)' },
-            { cmd: '/check', desc: 'Check physical status' },
+            { cmd: '/check', desc: 'Check physical status, attributes, and skills' },
             { cmd: '/inven', desc: 'View inventory' },
+            { cmd: '/name', desc: '<new> - Claim/Change your identity' },
+            { cmd: '/move', desc: '<dir> - Move (n/s/e/w)' },
+            { cmd: '/say', desc: '<msg> - Speak nearby' },
             { cmd: '/materials', desc: 'View materials registry' },
             { cmd: '/blueprints', desc: 'View blueprints registry' },
             { cmd: '/rules', desc: 'View world rules' },
-            { cmd: '/move', desc: '<dir> - Move (n/s/e/w)' },
-            { cmd: '/say', desc: '<msg> - Speak nearby' },
             { cmd: '/respawn', desc: 'Revive (when in coma)' },
             { cmd: '/export', desc: 'View recovery code' },
             { cmd: '/import', desc: '<code> - Recover account' },
-            { cmd: '/donate', desc: 'Support the developer ☕' },
-            { cmd: '/supporters', desc: 'View supporter list 🌟' },
             { cmd: '/help', desc: 'Show help' }
         ];
         
@@ -818,9 +817,9 @@ Your UUID is now in the input field below. Select all (Ctrl+A) and copy (Ctrl+C)
             const entry = document.createElement('div');
             entry.className = `log-entry ${type}`;
             
-            const time = timestamp ? new Date(timestamp).toLocaleTimeString('ko-KR', {
-                hour: '2-digit', minute: '2-digit'
-            }) : new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+            const time = timestamp ? new Date(timestamp).toLocaleTimeString('en-US', {
+                hour: '2-digit', minute: '2-digit', hour12: false
+            }) : new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
             
             entry.innerHTML = `<span class="timestamp">[${time}]</span>${content.replace(/\n/g, '<br>')}`;
             logEl.appendChild(entry);
