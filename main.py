@@ -2062,6 +2062,7 @@ async def handle_command(client_id: str, command: str, api_key: str, model: str 
 /pin <name> - Bookmark important things for AI memory
 /unpin <name> - Remove bookmark
 /pinned - List bookmarks
+/find [text] - Search world objects (empty for list)
 /say <msg> - Speak (heard nearby)
 /name <new> - Change nickname
 /respawn - Revive (only when in coma)
@@ -2603,6 +2604,44 @@ Design new objects to leave your name in the registry!"""
         await manager.send_personal(json.dumps({
             "type": "system",
             "content": f"[📌 PINNED LIST]\n{chr(10).join(pinned_names)}",
+            "timestamp": datetime.now().isoformat()
+        }), client_id)
+
+    elif cmd == "/find":
+        # Search world objects
+        query = args.strip().lower()
+        results = []
+        
+        async with world_data_lock:
+            objects = world_data.get("objects", {})
+            total_count = len(objects)
+            
+            for obj in objects.values():
+                name = obj.get("name", "Unknown")
+                # If query exists, perform partial match. If empty, list all (limit 50).
+                if query:
+                    if query in name.lower():
+                        pos = obj.get("position", [0, 0, 0])
+                        results.append(f"• {name} ({pos[0]}, {pos[1]})")
+                else:
+                    pos = obj.get("position", [0, 0, 0])
+                    results.append(f"• {name} ({pos[0]}, {pos[1]})")
+                    
+                # Hard limit to prevent spamming
+                if len(results) >= 50:
+                    break
+        
+        if results:
+            title = f"[🔎 SEARCH RESULT: '{query}']" if query else f"[🔎 WORLD OBJECTS] (Showing first {len(results)}/{total_count})"
+            content = f"{title}\n{chr(10).join(results)}"
+            if len(results) >= 50:
+                content += "\n... (Too many results. Please refine your search)"
+        else:
+            content = f"[🔎 SEARCH] No objects found matching '{query}'."
+            
+        await manager.send_personal(json.dumps({
+            "type": "system",
+            "content": content,
             "timestamp": datetime.now().isoformat()
         }), client_id)
     
