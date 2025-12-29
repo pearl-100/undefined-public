@@ -3320,7 +3320,7 @@ def get_location_description(position: List[int]) -> str:
     else:
         z_text = "Surface"
     
-    return f"[{time_info['period_en']}] {biome['name']} ({x}, {y}, z={z}) - {z_text}"
+    return f"[{time_info['period']}] {biome['name']} ({x}, {y}, z={z}) - {z_text}"
 
 async def get_location_description_detailed(position: List[int], client_id: str) -> str:
     """Detailed location description (5 senses + weather) - with z-axis"""
@@ -3365,7 +3365,7 @@ async def get_location_description_detailed(position: List[int], client_id: str)
         z_display = "Surface Level"
     
     # Basic environment description
-    desc = f"""[{time_info['period_en']} - {time_info['display']}] {biome['name']} ({x}, {y}, z={z})
+    desc = f"""[{time_info['period']} - {time_info['display']}] {biome['name']} ({x}, {y}, z={z})
 【ELEVATION】 {z_display} ({altitude_desc})
 
 【SIGHT】 {biome['description']}
