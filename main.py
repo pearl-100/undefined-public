@@ -2072,6 +2072,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     location_info = get_location_description([0, 0])
     
     # Special tutorial guidance for new users (Pathos & User design)
+    # Only show to users who haven't set their name yet (is_new_user == True)
     if is_new_user:
         tutorial_intro = (
             "You awaken amidst mountains of refuse. The stench of ozone and decay is overwhelming. "
@@ -2090,9 +2091,14 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             "timestamp": datetime.now().isoformat()
         }), nickname)
     else:
+        # Returning users see standard location info
+        # Get actual user location instead of hardcoded [0,0]
+        current_pos = [saved_position["x"], saved_position["y"], saved_position["z"]]
+        location_desc = get_location_description(current_pos)
+        
         await manager.send_personal(json.dumps({
             "type": "narrative",
-            "content": location_info,
+            "content": f"Welcome back, {nickname}.\n\n{location_desc}",
             "timestamp": datetime.now().isoformat()
         }), nickname)
     
