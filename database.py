@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS users (
     z INTEGER DEFAULT 0,
     status TEXT DEFAULT 'Healthy',
     inventory TEXT DEFAULT '{}',
+    attributes TEXT DEFAULT '{}',
+    skills TEXT DEFAULT '{}',
     name_set INTEGER DEFAULT 0,
     is_dead INTEGER DEFAULT 0,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -179,6 +181,8 @@ class Database:
         """Insert or update user"""
         try:
             inventory = json.dumps(data.get("inventory", {}), ensure_ascii=False)
+            attributes = json.dumps(data.get("attributes", {}), ensure_ascii=False)
+            skills = json.dumps(data.get("skills", {}), ensure_ascii=False)
             position = data.get("position", {"x": 0, "y": 0, "z": 0})
             if isinstance(position, list):
                 x, y = position[0], position[1]
@@ -189,8 +193,8 @@ class Database:
                 z = position.get("z", 0)
             
             await self.conn.execute("""
-                INSERT INTO users (uuid, nickname, x, y, z, status, inventory, name_set, is_dead)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO users (uuid, nickname, x, y, z, status, inventory, attributes, skills, name_set, is_dead)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(uuid) DO UPDATE SET
                     nickname = excluded.nickname,
                     x = excluded.x,
@@ -198,6 +202,8 @@ class Database:
                     z = excluded.z,
                     status = excluded.status,
                     inventory = excluded.inventory,
+                    attributes = excluded.attributes,
+                    skills = excluded.skills,
                     name_set = excluded.name_set,
                     is_dead = excluded.is_dead
             """, (
@@ -206,6 +212,8 @@ class Database:
                 int(x), int(y), int(z),
                 data.get("status", "Healthy"),
                 inventory,
+                attributes,
+                skills,
                 1 if data.get("name_set", False) else 0,
                 1 if data.get("is_dead", False) else 0
             ))
@@ -231,6 +239,8 @@ class Database:
             "position": {"x": row["x"], "y": row["y"], "z": row["z"]},
             "status": row["status"],
             "inventory": json.loads(row["inventory"] or "{}"),
+            "attributes": json.loads(row["attributes"] or "{}"),
+            "skills": json.loads(row["skills"] or "{}"),
             "is_dead": bool(row["is_dead"]),
             "created_at": row["created_at"]
         }

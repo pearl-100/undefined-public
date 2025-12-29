@@ -1356,6 +1356,8 @@ class ConnectionManager:
         world_data["users"][uuid]["position"] = {"x": pos[0], "y": pos[1], "z": pos[2]}
         world_data["users"][uuid]["status"] = player.get("status", "Healthy")
         world_data["users"][uuid]["inventory"] = player.get("inventory", {})
+        world_data["users"][uuid]["attributes"] = player.get("attributes", {})
+        world_data["users"][uuid]["skills"] = player.get("skills", {})
         world_data["users"][uuid]["is_dead"] = player.get("is_dead", False)
         world_data["users"][uuid]["nickname"] = client_id
         
@@ -1919,6 +1921,11 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 "y": int(saved_position.get("y", 0) or 0),
                 "z": int(saved_position.get("z", 0) or 0)
             }
+            # Initialize attributes and skills if missing (backward compatibility)
+            if "attributes" not in user_data:
+                user_data["attributes"] = {}
+            if "skills" not in user_data:
+                user_data["skills"] = {}
         else:
             # Migrate legacy string format to new dict format
             nickname = user_data
@@ -1928,20 +1935,35 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 "name_set": True,
                 "position": saved_position,
                 "status": "Healthy",
-                "inventory": {}
+                "inventory": {},
+                "attributes": {},
+                "skills": {}
             }
             await save_world_data(world_data)
             is_new_user = False
     else:
         # New user: Create nickname + initial position (0, 0, 0)
+        # CONCEPT: Character Creation - Assigning basic potential (Conceptualized by Pathos ★)
         nickname = f"User_{random.randint(10000, 99999)}"
         saved_position = {"x": 0, "y": 0, "z": 0}
+        
+        # Initial attributes (randomized pool)
+        initial_attributes = {
+            "Strength": random.randint(3, 8),
+            "Agility": random.randint(3, 8),
+            "Endurance": random.randint(3, 8),
+            "Intelligence": random.randint(3, 8),
+            "Willpower": random.randint(3, 8)
+        }
+        
         world_data["users"][user_id] = {
             "nickname": nickname, 
             "name_set": False,
             "position": saved_position,
             "status": "Healthy",
-            "inventory": {}
+            "inventory": {},
+            "attributes": initial_attributes,
+            "skills": {}
         }
         # Save to DB
         if db_instance is None:
@@ -1960,6 +1982,8 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         "position": [saved_position["x"], saved_position["y"], saved_position["z"]],
         "status": world_data["users"][user_id].get("status", "Healthy"),
         "inventory": world_data["users"][user_id].get("inventory", {}),
+        "attributes": world_data["users"][user_id].get("attributes", {}),
+        "skills": world_data["users"][user_id].get("skills", {}),
         "is_dead": world_data["users"][user_id].get("is_dead", False),
         "joined_at": datetime.now().isoformat()
     }
@@ -1993,7 +2017,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     if is_new_user:
         welcome_msg = json.dumps({
             "type": "system",
-            "content": f"[SYSTEM] A new soul '{nickname}' has been born into the world.",
+            "content": f"[SYSTEM] A new soul '{nickname}' has been born into the world. Their potential has been woven by the design of Pathos ★.",
             "timestamp": datetime.now().isoformat()
         })
     else:
@@ -2006,11 +2030,31 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     
     # Send current location info
     location_info = get_location_description([0, 0])
-    await manager.send_personal(json.dumps({
-        "type": "narrative",
-        "content": location_info,
-        "timestamp": datetime.now().isoformat()
-    }), nickname)
+    
+    # Special tutorial guidance for new users (Pathos & User design)
+    if is_new_user:
+        tutorial_intro = (
+            "You awaken amidst mountains of refuse. The stench of ozone and decay is overwhelming. "
+            "Your mind is a blank slate, but your body is a specific configuration of potential—a design woven by the architect Pathos ★.\n\n"
+            "WELCOME TO REALITY:\n"
+            "1. AGENCY: You control only your INTENT. Tell me what you *try* to do. I (The Omni-Engine) will decide if you succeed or fail based on your potential and the world's harsh physics.\n"
+            "2. EVOLUTION: Every action you take—climbing, searching, struggling—molds your Attributes and Skills in real-time (Conceptualized by the User). You grow by doing.\n"
+            "3. THE 7 ENGINES: Your life is sustained and threatened by 7 invisible simulations (Bio, Decay, Weather, etc.). You are fragile. You are mortal.\n"
+            "4. PERMANENCE: This is a shared world. What you build, break, or leave behind will remain for others.\n\n"
+            "GUIDANCE: You are currently unnamed. Use /look to sense the landfill, or type '/name [YourChoice]' to claim your soul. "
+            "The Genesis Monolith (0,0,0) pulses in the distance. Begin your journey."
+        )
+        await manager.send_personal(json.dumps({
+            "type": "narrative",
+            "content": tutorial_intro,
+            "timestamp": datetime.now().isoformat()
+        }), nickname)
+    else:
+        await manager.send_personal(json.dumps({
+            "type": "narrative",
+            "content": location_info,
+            "timestamp": datetime.now().isoformat()
+        }), nickname)
     
     try:
         while True:
@@ -2049,7 +2093,15 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                             manager.disconnect(old_nickname)
                             
                             # Update DB
-                            world_data["users"][user_id] = {"nickname": new_nickname, "name_set": True, "position": saved_position, "status": "Healthy", "inventory": {}}
+                            world_data["users"][user_id] = {
+                                "nickname": new_nickname, 
+                                "name_set": True, 
+                                "position": saved_position, 
+                                "status": "Healthy", 
+                                "inventory": {},
+                                "attributes": user_data.get("attributes", {}),
+                                "skills": user_data.get("skills", {})
+                            }
                             if db_instance is None:
                                 db_instance = await get_db()
                             await db_instance.save_user(user_id, world_data["users"][user_id])
@@ -2403,16 +2455,31 @@ Be the first to support: /donate"""
     elif cmd == "/check":
         player = manager.player_data.get(client_id, {})
         status = player.get("status", "Healthy")
-        pos = player.get("position", [0, 0])
+        pos = player.get("position", [0, 0, 0])
+        attributes = player.get("attributes", {})
+        skills = player.get("skills", {})
         
         # Physical status with sensory description
         check_text = f"""[BODY CHECK]
 You slowly examine your physical condition...
 
-Location: ({pos[0]}, {pos[1]})
+Location: ({pos[0]}, {pos[1]}, {pos[2] if len(pos) > 2 else 0})
 Status: {status}
 
-You flex your fingers and take a deep breath."""
+[ATTRIBUTES] (Potential shaped by Pathos ★)
+"""
+        if attributes:
+            for attr, val in attributes.items():
+                check_text += f"  • {attr}: {val}\n"
+        else:
+            check_text += "  (Unknown potential)\n"
+            
+        if skills:
+            check_text += "\n[SKILLS] (Earned mastery)\n"
+            for skill, level in skills.items():
+                check_text += f"  • {skill}: {level}\n"
+        
+        check_text += "\nYou flex your fingers and take a deep breath."
         
         # Add descriptions for status effects
         if "부상" in status or "injured" in status.lower():
@@ -2933,12 +3000,21 @@ def ensure_player_data(client_id: str):
             "position": [0, 0, 0],  # x, y, z (integers)
             "status": "Healthy",
             "inventory": {},
+            "attributes": {},
+            "skills": {},
             "joined_at": datetime.now().isoformat()
         }
     else:
         # Ensure position is valid [x, y, z] integers
         pos = manager.player_data[client_id].get("position", [0, 0, 0])
         manager.player_data[client_id]["position"] = ensure_int_position(pos)
+        
+        # Ensure new fields exist for existing connections
+        if "attributes" not in manager.player_data[client_id]:
+            manager.player_data[client_id]["attributes"] = {}
+        if "skills" not in manager.player_data[client_id]:
+            manager.player_data[client_id]["skills"] = {}
+            
     return manager.player_data[client_id]
 
 def is_supporter(user_id: str) -> bool:
@@ -3451,7 +3527,9 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         "id": client_id,
         "position": pos,
         "status": player.get("status", "Healthy"),
-        "inventory": player.get("inventory", {})
+        "inventory": player.get("inventory", {}),
+        "attributes": player.get("attributes", {}),
+        "skills": player.get("skills", {})
     }, ensure_ascii=False)
     
     # 위치 컨텍스트 (바이옴, 시간대, 날씨)
@@ -3740,6 +3818,39 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
                     elif change > 0:
                         inv[item] = change
                 player["inventory"] = inv
+            
+            # === Attribute Change Handler (Evolution System conceptualized by the User) ===
+            if "attribute_change" in user_update and isinstance(user_update["attribute_change"], dict):
+                attrs = player.get("attributes", {})
+                for attr, change in user_update["attribute_change"].items():
+                    if not isinstance(change, (int, float)):
+                        continue
+                    # Normalizing attribute name (Capitalized)
+                    attr_name = attr.capitalize()
+                    if attr_name in attrs:
+                        # Grow slowly (increments like 0.1)
+                        attrs[attr_name] = round(attrs[attr_name] + change, 2)
+                        # Keep attributes within 1-20 range
+                        attrs[attr_name] = max(1, min(20, attrs[attr_name]))
+                player["attributes"] = attrs
+
+            # === Skill Change Handler (Evolution System conceptualized by the User) ===
+            if "skill_change" in user_update and isinstance(user_update["skill_change"], dict):
+                skills = player.get("skills", {})
+                for skill, change in user_update["skill_change"].items():
+                    if not isinstance(change, (int, float)):
+                        continue
+                    # Skill names are usually title-cased
+                    skill_name = skill.title()
+                    if skill_name in skills:
+                        skills[skill_name] += change
+                    else:
+                        skills[skill_name] = change
+                    
+                    # Prevent negative skill levels
+                    if skills[skill_name] < 0:
+                        skills[skill_name] = 0
+                player["skills"] = skills
             
             # === Position Delta Handler (Relative Movement) ===
             if "position_delta" in user_update and user_update["position_delta"]:
