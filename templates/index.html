@@ -890,7 +890,21 @@ Your UUID is now in the input field below. Select all (Ctrl+A) and copy (Ctrl+C)
         // === Hint System (Command Autocomplete) ===
         function showHints(filter = '') {
             const hintBox = document.getElementById('hint-box');
-            const filtered = COMMANDS.filter(c => c.cmd.startsWith(filter.split(' ')[0]));
+            const inputParts = filter.split(' ');
+            const cmdPart = inputParts[0];
+            const flagPart = inputParts.length > 1 ? inputParts[1] : '';
+
+            const filtered = COMMANDS.filter(c => {
+                if (inputParts.length === 1) {
+                    // Only command part typed (e.g., "/loo")
+                    return c.cmd.startsWith(cmdPart);
+                } else {
+                    // Command and something more (e.g., "/look -p")
+                    // If the suggestion matches the command part exactly, 
+                    // check if the suggestion's full cmd starts with what the user typed.
+                    return c.cmd.startsWith(filter);
+                }
+            });
             
             if (!filtered.length || !filter.startsWith('/')) {
                 hintBox.style.display = 'none';
