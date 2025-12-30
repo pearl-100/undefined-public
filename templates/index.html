@@ -1023,7 +1023,8 @@ Your UUID is now in the input field below. Select all (Ctrl+A) and copy (Ctrl+C)
                 const value = e.target.value;
                 if (value.startsWith('/')) {
                     selectedHintIndex = 0;
-                    showHints(value.split(' ')[0]);
+                    // Pass the whole value (or at least first two parts) to see flags
+                    showHints(value);
                 } else {
                     hintBox.style.display = 'none';
                 }
