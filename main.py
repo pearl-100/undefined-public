@@ -2394,7 +2394,11 @@ Be the first to support: /donate"""
                             
                         # Inventory check (Owned)
                         is_owned = (obj.get("owner_uuid") == user_id)
-                        in_inventory = any(inv_item.lower().replace(" ", "_") in [obj_name.replace(" ", "_"), obj_name_en.replace(" ", "_"), obj_id.lower()] 
+                        # Ensure both sides are lower-cased and normalized for comparison
+                        obj_name_clean = obj_name.replace(" ", "_")
+                        obj_name_en_clean = obj_name_en.replace(" ", "_")
+                        
+                        in_inventory = any(inv_item.lower().replace(" ", "_") in [obj_name_clean, obj_name_en_clean, obj_id.lower()] 
                                           for inv_item in inventory.keys())
                         
                         if is_owned and in_inventory:
@@ -2403,28 +2407,38 @@ Be the first to support: /donate"""
 
             # 3. Search blueprints (object_types) or generic inventory match
             if not found_obj:
+                # Find matching item in inventory first
+                matching_inv_item = None
                 for inv_item in inventory.keys():
                     inv_item_clean = inv_item.lower().replace(" ", "_")
                     if target in inv_item_clean or inv_item_clean in target:
-                        async with world_data_lock:
-                            object_types = world_data.get("object_types", {})
-                            for bp_id, bp in object_types.items():
-                                if bp.get("name", "").lower() == inv_item.lower() or bp_id.lower() == inv_item_clean:
-                                    found_obj = bp.copy()
-                                    found_obj["properties"] = {
-                                        **bp.get("properties", {}),
-                                        "Quantity": inventory[inv_item],
-                                        "Status": "Carried in inventory"
-                                    }
-                                    break
-                        
-                        if not found_obj:
-                            found_obj = {
-                                "name": inv_item,
-                                "description": f"You are carrying this item: {inv_item}.",
-                                "properties": {"Quantity": inventory[inv_item]}
-                            }
+                        matching_inv_item = inv_item
                         break
+                
+                if matching_inv_item:
+                    async with world_data_lock:
+                        object_types = world_data.get("object_types", {})
+                        inv_item_clean = matching_inv_item.lower().replace(" ", "_")
+                        
+                        # Match inventory item name with a registered blueprint
+                        for bp_id, bp in object_types.items():
+                            bp_name = bp.get("name", "").lower()
+                            if bp_name == matching_inv_item.lower() or bp_id.lower() == inv_item_clean:
+                                found_obj = bp.copy()
+                                found_obj["properties"] = {
+                                    **bp.get("properties", {}),
+                                    "Quantity": inventory[matching_inv_item],
+                                    "Status": "Carried in inventory"
+                                }
+                                break
+                    
+                    if not found_obj:
+                        # Default fallback if no blueprint exists
+                        found_obj = {
+                            "name": matching_inv_item,
+                            "description": f"You are carrying this item: {matching_inv_item}.",
+                            "properties": {"Quantity": inventory[matching_inv_item]}
+                        }
             
             if found_obj:
                 obj_name = found_obj.get("name_en", found_obj.get("name", "Something"))
