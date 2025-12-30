@@ -2065,7 +2065,7 @@ async def handle_command(client_id: str, command: str, api_key: str, model: str 
     if cmd == "/help":
         help_text = """[COMMANDS]
 /do <action> - Execute action (AI judgment)
-/look - Observe surroundings with all senses
+/look [target] - Observe surroundings or examine a specific object/soul
 /check - Check physical status (injuries, hunger, fatigue)
 /inven - View inventory
 /materials - View materials registry
@@ -2348,7 +2348,7 @@ Be the first to support: /donate"""
     elif cmd == "/look":
         player = manager.player_data.get(client_id, {})
         pos = player.get("position", [0, 0])
-        description = await get_location_description_detailed(pos, client_id)
+        description = await get_location_description_detailed(pos, client_id, args)
         await manager.send_personal(json.dumps({
             "type": "narrative",
             "content": description,
@@ -3398,7 +3398,7 @@ def get_location_description(position: List[int], offset_hours: float = 0) -> st
     
     return f"[{time_info['period']}] {biome['name']} ({x}, {y}, z={z}) - {z_text}"
 
-async def get_location_description_detailed(position: List[int], client_id: str) -> str:
+async def get_location_description_detailed(position: List[int], client_id: str, target: str = "") -> str:
     """Detailed location description (5 senses + weather) - with z-axis"""
     global world_data, manager
     x = position[0] if len(position) > 0 else 0
@@ -3419,6 +3419,49 @@ async def get_location_description_detailed(position: List[int], client_id: str)
         obj_pos = ensure_int_position(obj.get("position", [999, 999]))
         if abs(obj_pos[0] - x) <= 2 and abs(obj_pos[1] - y) <= 2:
             nearby_objects.append(obj)
+
+    # Check for other players nearby (Souls)
+    nearby_souls = []
+    for pid, pdata in world_data.get("users", {}).items():
+        if pid != client_id:
+            ppos = ensure_int_position(pdata.get("position", [999, 999]))
+            if abs(ppos[0] - x) <= 2 and abs(ppos[1] - y) <= 2:
+                nearby_souls.append(pdata)
+
+    # TARGETED LOOK: If target is specified, return detailed info for that specific thing
+    if target:
+        target_clean = target.lower().strip()
+        
+        # 1. Search in nearby objects
+        for obj in nearby_objects:
+            name_en = obj.get("name_en", "").lower()
+            name_ko = obj.get("name", "").lower()
+            if target_clean in name_en or target_clean in name_ko:
+                obj_name = obj.get("name_en", obj.get("name", "Something"))
+                obj_desc = obj.get("description", "A mysterious object.")
+                obj_props = obj.get("properties", {})
+                
+                detail_desc = f"【EXAMINE: {obj_name}】\n\n{obj_desc}"
+                if obj_props:
+                    detail_desc += "\n\n[Properties]"
+                    for k, v in obj_props.items():
+                        detail_desc += f"\n  • {k}: {v}"
+                return detail_desc
+        
+        # 2. Search in nearby souls
+        for soul in nearby_souls:
+            nickname = soul.get("nickname", "A stranger").lower()
+            if target_clean in nickname:
+                status = soul.get("status", "Existing")
+                return f"【SOUL: {soul.get('nickname')}】\n\nYou observe the other soul carefully. Their state: {status}."
+                
+        # 3. Handle special keywords
+        if target_clean in ["me", "self", "body"]:
+            return "Try /check to examine yourself in detail."
+            
+        return f"You look for '{target}', but you don't see anything by that name nearby."
+    
+    # --- Regular /look (No Target) ---
     
     # Z-axis environmental description
     altitude_desc = get_altitude_description(z)
@@ -3489,6 +3532,14 @@ async def get_location_description_detailed(position: List[int], client_id: str)
 Faint letters are carved into its surface: "Hello, World!"
 Mountains of waste surround the area."""
     
+    # Nearby souls description
+    if nearby_souls:
+        desc += "\n\n【NEARBY SOULS】"
+        for soul in nearby_souls[:5]:
+            nick = soul.get("nickname", "A stranger")
+            status = soul.get("status", "Existing")
+            desc += f"\n  • {nick}: {status[:30]}..."
+
     # Nearby objects description
     if nearby_objects:
         desc += "\n\n【NEARBY OBJECTS】"
@@ -3500,16 +3551,17 @@ Mountains of waste surround the area."""
             else:
                 desc += f"\n  • {obj_name}"
     
-    # Check for other players nearby
-    nearby_players = []
-    for pid, pdata in manager.player_data.items():
+    # Legacy presence detection (for online status visualization)
+    online_nicks = []
+    for pid in manager.player_data:
         if pid != client_id:
+            pdata = manager.player_data[pid]
             ppos = ensure_int_position(pdata.get("position", [999, 999]))
             if abs(ppos[0] - x) <= 3 and abs(ppos[1] - y) <= 3:
-                nearby_players.append(pid)
+                online_nicks.append(pdata.get("nickname", pid))
     
-    if nearby_players:
-        desc += f"\n\n【PRESENCE】 You sense the presence of {', '.join(nearby_players)} nearby."
+    if online_nicks:
+        desc += f"\n\n【PRESENCE】 You sense the active presence of {', '.join(online_nicks)} nearby."
     
     return desc
 
