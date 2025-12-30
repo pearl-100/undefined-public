@@ -3927,8 +3927,6 @@ Mountains of waste surround the area."""
         if len(nearby_objects) > 5:
             desc += f"\n  ...and {len(nearby_objects) - 5} more."
             
-        desc += "\n\n💡 (Tip: Type '/look [name]' to see the full description of a specific object)"
-    
     # Check for other players nearby
     nearby_players = []
     for pid, pdata in manager.player_data.items():

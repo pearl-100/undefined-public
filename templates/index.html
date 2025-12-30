@@ -521,7 +521,10 @@
         // === Command List ===
         const COMMANDS = [
             { cmd: '/do', desc: '<action> - AI judgment' },
-            { cmd: '/look', desc: '[-p|-o|-i] [target] - Observe surroundings, people(-p), objects(-o), or items(-i)' },
+            { cmd: '/look', desc: '[target] - Observe nearby surroundings, people, objects, or items' },
+            { cmd: '/look -p', desc: '[name] - Look at a specific person' },
+            { cmd: '/look -o', desc: '[name] - Look at a specific object' },
+            { cmd: '/look -i', desc: '[name] - Look at a specific item' },
             { cmd: '/check', desc: 'Check status, attributes, skills' },
             { cmd: '/inven', desc: 'View inventory' },
             { cmd: '/users', desc: 'List online players' },
