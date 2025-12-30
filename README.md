@@ -66,7 +66,7 @@ The server runs at `http://localhost:8000`.
 | Command | Description |
 |---------|-------------|
 | `/do <action>` | Request AI judgment for an action (e.g., `/do pick up a stone`) |
-| `/look` | Observe surroundings in detail |
+| `/look [-p\|-o\|-i] [target]` | Observe nearby surroundings, people(-p), objects(-o), or items(-i) |
 | `/check` | Check your physical status |
 | `/inven` | Check inventory |
 | `/move <direction>` | Move (north/south/east/west) |

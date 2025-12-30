@@ -2065,7 +2065,7 @@ async def handle_command(client_id: str, command: str, api_key: str, model: str 
     if cmd == "/help":
         help_text = """[COMMANDS]
 /do <action> - Execute action (AI judgment)
-/look - Observe surroundings with all senses
+/look [-p|-o|-i] [target] - Observe surroundings, people(-p), objects(-o), or items(-i)
 /check - Check physical status (injuries, hunger, fatigue)
 /inven - View inventory
 /users - List online players
@@ -2358,17 +2358,45 @@ Be the first to support: /donate"""
         }
         
         if args:
-            target = args.strip().lower().replace(" ", "_")
+            arg_parts = args.strip().split(" ", 1)
+            flag = None
+            target_str = args.strip()
+            
+            if arg_parts[0] in ["-p", "-o", "-i"]:
+                flag = arg_parts[0]
+                target_str = arg_parts[1] if len(arg_parts) > 1 else ""
+            
+            target = target_str.lower().replace(" ", "_")
             found_obj = None
             
-            # 1. Search in Predefined Data (Hardcoded items)
-            for key, data in PREDEFINED_ITEM_DATA.items():
-                if target in key or key in target:
-                    found_obj = data
-                    break
+            # 1. Search in Predefined Data (Items) - if no flag or -i
+            if not flag or flag == "-i":
+                for key, data in PREDEFINED_ITEM_DATA.items():
+                    if target in key or key in target:
+                        found_obj = data
+                        break
             
-            # 2. Search in world_data["objects"] (Nearby or Owned)
-            if not found_obj:
+            # 2. Search in Nearby Players - if no flag or -p
+            if not found_obj and (not flag or flag == "-p"):
+                for pid, pdata in manager.player_data.items():
+                    if target == pid.lower() or target == pdata.get("nickname", "").lower():
+                        ppos = ensure_int_position(pdata.get("position", [999, 999, 999]))
+                        is_nearby = (abs(ppos[0] - pos[0]) <= 3 and 
+                                     abs(ppos[1] - pos[1]) <= 3 and 
+                                     abs(ppos[2] - pos[2]) <= 3)
+                        if is_nearby:
+                            found_obj = {
+                                "name": pdata.get("nickname", pid),
+                                "description": f"A fellow survivor named {pdata.get('nickname', pid)}. They seem to be navigating this 'undefined' world just like you.",
+                                "properties": {
+                                    "Status": pdata.get("status", "Unknown"),
+                                    "Position": f"({ppos[0]}, {ppos[1]}, {ppos[2]})"
+                                }
+                            }
+                            break
+
+            # 3. Search in world_data["objects"] (Nearby or Owned) - if no flag or -o
+            if not found_obj and (not flag or flag == "-o"):
                 async with world_data_lock:
                     all_objects = world_data.get("objects", {})
                     for obj_id, obj in all_objects.items():
@@ -2405,8 +2433,8 @@ Be the first to support: /donate"""
                             found_obj = obj
                             continue
 
-            # 3. Search blueprints (object_types) or generic inventory match
-            if not found_obj:
+            # 4. Search blueprints (object_types) or generic inventory match - if no flag or -i
+            if not found_obj and (not flag or flag == "-i"):
                 # Find matching item in inventory first
                 matching_inv_item = None
                 for inv_item in inventory.keys():
@@ -2453,7 +2481,11 @@ Be the first to support: /donate"""
                     for k, v in props.items():
                         description += f"\n  • {k}: {v}"
             else:
-                description = f"> [SEARCH] You look for '{args}' but see nothing of the sort nearby or in your pockets."
+                cat_name = "target"
+                if flag == "-p": cat_name = "person"
+                elif flag == "-o": cat_name = "object"
+                elif flag == "-i": cat_name = "item"
+                description = f"> [SEARCH] You look for the {cat_name} '{target_str}' but see nothing of the sort nearby or in your pockets."
         else:
             # Default /look behavior (Summary)
             description = await get_location_description_detailed(pos, client_id)
