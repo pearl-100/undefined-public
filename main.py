@@ -2345,8 +2345,87 @@ Be the first to support: /donate"""
         
     elif cmd == "/look":
         player = manager.player_data.get(client_id, {})
-        pos = player.get("position", [0, 0])
-        description = await get_location_description_detailed(pos, client_id)
+        pos = ensure_int_position(player.get("position", [0, 0, 0]))
+        inventory = player.get("inventory", {})
+        
+        if args:
+            target = args.strip().lower()
+            found_obj = None
+            
+            # Efficient single-pass search for both nearby and owned inventory objects
+            async with world_data_lock:
+                all_objects = world_data.get("objects", {})
+                for obj_id, obj in all_objects.items():
+                    obj_name = obj.get("name", "").lower()
+                    obj_name_en = obj.get("name_en", "").lower()
+                    obj_name_ko = obj.get("name_ko", "").lower()
+                    
+                    # Target match check
+                    if not (target in obj_name or target in obj_name_en or target in obj_name_ko or target == obj_id.lower()):
+                        continue
+                        
+                    # 1. Nearby check (Strict 3D distance - within 3 units)
+                    obj_pos = ensure_int_position(obj.get("position", [999, 999, 999]))
+                    is_nearby = (abs(obj_pos[0] - pos[0]) <= 3 and 
+                                 abs(obj_pos[1] - pos[1]) <= 3 and 
+                                 abs(obj_pos[2] - pos[2]) <= 3)
+                    
+                    if is_nearby:
+                        found_obj = obj
+                        break
+                        
+                    # 2. Inventory check (If owned by user and currently in inventory)
+                    is_owned = (obj.get("owner_uuid") == user_id)
+                    # Check if the name of this world object matches something in our inventory string keys
+                    in_inventory = any(inv_item.lower() in [obj_name, obj_name_en, obj_name_ko] for inv_item in inventory.keys())
+                    
+                    if is_owned and in_inventory:
+                        found_obj = obj
+                        # Don't break yet, keep looking for a nearby version if it exists
+                        continue
+
+            # 3. Fallback: Search blueprints (object_types) if it's just a generic inventory item
+            if not found_obj:
+                for inv_item in inventory.keys():
+                    if target in inv_item.lower():
+                        async with world_data_lock:
+                            object_types = world_data.get("object_types", {})
+                            # Match inventory item name with a registered blueprint
+                            for bp_id, bp in object_types.items():
+                                if bp.get("name", "").lower() == inv_item.lower() or bp_id.lower() == inv_item.lower():
+                                    found_obj = bp.copy()
+                                    found_obj["properties"] = {
+                                        **bp.get("properties", {}),
+                                        "Quantity": inventory[inv_item],
+                                        "Status": "Carried in inventory"
+                                    }
+                                    break
+                        
+                        if not found_obj:
+                            found_obj = {
+                                "name": inv_item,
+                                "description": f"You are carrying this item: {inv_item}.",
+                                "properties": {"Quantity": inventory[inv_item]}
+                            }
+                        break
+            
+            if found_obj:
+                obj_name = found_obj.get("name_en", found_obj.get("name", "Something"))
+                obj_desc = found_obj.get("description", "No description available.")
+                
+                description = f"### [{obj_name}]\n\n{obj_desc}"
+                
+                props = found_obj.get("properties", {})
+                if props:
+                    description += "\n\n**[PROPERTIES]**"
+                    for k, v in props.items():
+                        description += f"\n- {k}: {v}"
+            else:
+                description = f"> [SEARCH] You look for '{args}' but see nothing of the sort nearby or in your pockets."
+        else:
+            # Default /look behavior (Summary)
+            description = await get_location_description_detailed(pos, client_id)
+            
         await manager.send_personal(json.dumps({
             "type": "narrative",
             "content": description,
@@ -3780,6 +3859,11 @@ Mountains of waste surround the area."""
                 desc += f"\n  • {obj_name}: {obj_desc[:50]}..."
             else:
                 desc += f"\n  • {obj_name}"
+        
+        if len(nearby_objects) > 5:
+            desc += f"\n  ...and {len(nearby_objects) - 5} more."
+            
+        desc += "\n\n💡 (Tip: Type '/look [name]' to see the full description of a specific object)"
     
     # Check for other players nearby
     nearby_players = []
