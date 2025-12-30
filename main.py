@@ -2065,9 +2065,12 @@ async def handle_command(client_id: str, command: str, api_key: str, model: str 
     if cmd == "/help":
         help_text = """[COMMANDS]
 /do <action> - Execute action (AI judgment)
-/look [target] - Observe surroundings or examine a specific object/soul
+/look - Observe surroundings with all senses
 /check - Check physical status (injuries, hunger, fatigue)
 /inven - View inventory
+/users - List online players
+/say <nick> <msg> - Private message (Whisper)
+/give <nick> <item> <qty> - Transfer items remotely
 /materials - View materials registry
 /blueprints - View blueprints registry
 /rules - View current world rules
@@ -2076,7 +2079,6 @@ async def handle_command(client_id: str, command: str, api_key: str, model: str 
 /unpin <name> - Remove bookmark
 /pinned - List bookmarks
 /find [text] - Search world objects (empty for list)
-/say <msg> - Speak (heard nearby)
 /name <new> - Change nickname
 /respawn - Revive (only when in coma)
 /export - View account recovery code
@@ -2247,11 +2249,7 @@ Be the first to support: /donate"""
         # ADMIN ONLY: Manually grant supporter status
         # Usage: /grant <target_uuid>
         # Security: Only specific admin UUIDs can use this
-        admin_env = os.getenv("ADMIN_UUIDS", "").strip()
-        ADMIN_UUIDS = [uuid.strip() for uuid in admin_env.split(",") if uuid.strip()]
-        
-        # If no admins configured OR user is not an admin → DENY
-        if not ADMIN_UUIDS or user_id not in ADMIN_UUIDS:
+        if not is_admin(user_id):
             await manager.send_personal(json.dumps({
                 "type": "error",
                 "content": "[ERROR] Admin only command.",
@@ -2348,7 +2346,7 @@ Be the first to support: /donate"""
     elif cmd == "/look":
         player = manager.player_data.get(client_id, {})
         pos = player.get("position", [0, 0])
-        description = await get_location_description_detailed(pos, client_id, args)
+        description = await get_location_description_detailed(pos, client_id)
         await manager.send_personal(json.dumps({
             "type": "narrative",
             "content": description,
@@ -2708,19 +2706,288 @@ Last Modified: {meta.get('last_modified', 'Unknown')}
             return
         await handle_move(client_id, args)
         
+    elif cmd == "/users":
+        active_users = list(manager.active_connections.keys())
+        msg = f"【ACTIVE SOULS】 Currently connected: {', '.join(active_users)}"
+        await manager.send_personal(json.dumps({
+            "type": "system",
+            "content": msg,
+            "timestamp": datetime.now().isoformat()
+        }), client_id)
+        
     elif cmd == "/say":
         if args:
+            parts = args.split(' ', 1)
+            if len(parts) < 2:
+                await manager.send_personal(json.dumps({
+                    "type": "error",
+                    "content": "[USAGE] /say [nickname/all] [message]",
+                    "timestamp": datetime.now().isoformat()
+                }), client_id)
+                return
+            
+            target_nickname = parts[0]
+            message = parts[1]
+            
+            # ADMIN BROADCAST
+            if target_nickname.lower() == "all":
+                if is_admin(user_id):
+                    # Translate to English via AI
+                    translated = await translate_to_english(message, api_key, model)
+                    broadcast_msg = json.dumps({
+                        "type": "chat",
+                        "speaker": f"【ADMIN】 {client_id}",
+                        "original": message,
+                        "content": f'【GLOBAL FROM {client_id}】: "{translated}"',
+                        "is_supporter": True,
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    await manager.broadcast(broadcast_msg)
+                    return
+                else:
+                    await manager.send_personal(json.dumps({
+                        "type": "error",
+                        "content": "[ERROR] Only admins can use '/say all'.",
+                        "timestamp": datetime.now().isoformat()
+                    }), client_id)
+                    return
+
+            if target_nickname not in manager.active_connections:
+                await manager.send_personal(json.dumps({
+                    "type": "error",
+                    "content": f"[ERROR] User '{target_nickname}' is not online.",
+                    "timestamp": datetime.now().isoformat()
+                }), client_id)
+                return
+
             # Translate to English via AI
-            translated = await translate_to_english(args, api_key, model)
-            say_msg = json.dumps({
+            translated = await translate_to_english(message, api_key, model)
+            
+            # Send to target
+            await manager.send_personal(json.dumps({
                 "type": "chat",
                 "speaker": client_id,
-                "original": args,
-                "content": f'{client_id} says: "{translated}"',
+                "original": message,
+                "content": f'【WHISPER from {client_id}】: "{translated}"',
                 "is_supporter": is_supporter(user_id) if user_id else False,
                 "timestamp": datetime.now().isoformat()
-            })
-            await manager.broadcast(say_msg)
+            }), target_nickname)
+            
+            # Confirm to sender
+            await manager.send_personal(json.dumps({
+                "type": "chat",
+                "speaker": client_id,
+                "content": f'【To {target_nickname}】: "{translated}"',
+                "timestamp": datetime.now().isoformat()
+            }), client_id)
+
+    elif cmd == "/give":
+        if args:
+            parts = args.split(' ')
+            if len(parts) < 3:
+                await manager.send_personal(json.dumps({
+                    "type": "error",
+                    "content": "[USAGE] /give [nickname/all] [item_name] [quantity]",
+                    "timestamp": datetime.now().isoformat()
+                }), client_id)
+                return
+            
+            target_nickname = parts[0]
+            try:
+                quantity = int(parts[-1])
+                item_name = " ".join(parts[1:-1])
+            except ValueError:
+                await manager.send_personal(json.dumps({
+                    "type": "error",
+                    "content": "[ERROR] Quantity must be a number at the end. Example: /give Nick Stone 5",
+                    "timestamp": datetime.now().isoformat()
+                }), client_id)
+                return
+
+            if quantity <= 0:
+                await manager.send_personal(json.dumps({
+                    "type": "error",
+                    "content": "[ERROR] Quantity must be positive.",
+                    "timestamp": datetime.now().isoformat()
+                }), client_id)
+                return
+
+            # Check sender inventory (Admin skips this check for 'all' or creates items?)
+            # Usually admin 'give all' should be an 'infinite' give.
+            # But the user asked for /give to be remote transfer.
+            # Let's check if user is admin.
+            admin_gift = False
+            if target_nickname.lower() == "all":
+                if not is_admin(user_id):
+                    await manager.send_personal(json.dumps({
+                        "type": "error",
+                        "content": "[ERROR] Only admins can use '/give all'.",
+                        "timestamp": datetime.now().isoformat()
+                    }), client_id)
+                    return
+                admin_gift = True
+
+            sender_data = manager.player_data.get(client_id, {})
+            sender_inv = sender_data.get("inventory", {})
+            
+            found_item = None
+            if not admin_gift:
+                # Regular give: check inventory
+                for inv_item in sender_inv:
+                    if inv_item.lower() == item_name.lower():
+                        found_item = inv_item
+                        break
+                
+                if not found_item or sender_inv[found_item] < quantity:
+                    await manager.send_personal(json.dumps({
+                        "type": "error",
+                        "content": f"[ERROR] You don't have enough '{item_name}'.",
+                        "timestamp": datetime.now().isoformat()
+                    }), client_id)
+                    return
+
+                if target_nickname not in manager.active_connections:
+                    await manager.send_personal(json.dumps({
+                        "type": "error",
+                        "content": f"[ERROR] User '{target_nickname}' is not online.",
+                        "timestamp": datetime.now().isoformat()
+                    }), client_id)
+                    return
+                
+                # --- DELIVERY DELAY LOGIC ---
+                # Calculate Manhattan distance
+                sender_pos = sender_data.get("position", [0, 0, 0])
+                target_data = manager.player_data.get(target_nickname, {})
+                target_pos = target_data.get("position", [0, 0, 0])
+                
+                # Capture UUID and check target exists BEFORE sleep
+                target_uuid = manager.get_uuid_by_nickname(target_nickname)
+                if not target_uuid:
+                    await manager.send_personal(json.dumps({
+                        "type": "error",
+                        "content": f"[ERROR] Could not resolve identity for {target_nickname}.",
+                        "timestamp": datetime.now().isoformat()
+                    }), client_id)
+                    return
+
+                dist = abs(sender_pos[0] - target_pos[0]) + abs(sender_pos[1] - target_pos[1])
+                delay = min(max(dist // 5, 1), 30)
+                
+                # Deduct from sender immediately
+                sender_inv[found_item] -= quantity
+                if sender_inv[found_item] <= 0:
+                    del sender_inv[found_item]
+                
+                await manager.save_player_to_db(client_id)
+                
+                # Notify sender
+                await manager.send_personal(json.dumps({
+                    "type": "system",
+                    "content": f"【SHIPPING】 You sent {quantity}x '{found_item}' to {target_nickname}. Due to distance ({dist} units), it will arrive in {delay} real-world seconds.",
+                    "timestamp": datetime.now().isoformat()
+                }), client_id)
+
+                # Background delivery task
+                async def deliver(t_uuid, t_nick, item, qty):
+                    await asyncio.sleep(delay)
+                    
+                    is_online = t_nick in manager.active_connections
+                    r_data = None
+                    
+                    if is_online:
+                        r_data = manager.player_data.get(t_nick)
+                    
+                    # If not online or somehow missing from player_data, load from world_data/DB
+                    if not r_data:
+                        is_online = False
+                        if t_uuid in world_data.get("users", {}):
+                            r_data = world_data["users"][t_uuid]
+                        else:
+                            # Last resort: Load from DB
+                            db = await get_db()
+                            all_users = await db.get_all_users()
+                            r_data = all_users.get(t_uuid)
+                    
+                    if not r_data:
+                        print(f"[ERROR] Delivery failed: target {t_uuid} not found after delay.")
+                        return
+
+                    r_inv = r_data.setdefault("inventory", {})
+                    
+                    target_found_item = None
+                    for inv_item in r_inv:
+                        if inv_item.lower() == item.lower():
+                            target_found_item = inv_item
+                            break
+                    
+                    if target_found_item:
+                        r_inv[target_found_item] += qty
+                    else:
+                        r_inv[item] = qty
+
+                    # Save result
+                    if is_online:
+                        await manager.save_player_to_db(t_nick)
+                    else:
+                        # Offline Force Save
+                        world_data.setdefault("users", {})[t_uuid] = r_data
+                        db = await get_db()
+                        await db.save_user(t_uuid, r_data)
+                    
+                    # Notify receiver if online
+                    if t_nick in manager.active_connections:
+                        await manager.send_personal(json.dumps({
+                            "type": "system",
+                            "content": f"【ARRIVED】 {client_id}'s gift ({qty}x '{item}') has arrived!",
+                            "timestamp": datetime.now().isoformat()
+                        }), t_nick)
+                    
+                    # Notify sender of completion
+                    if client_id in manager.active_connections:
+                        await manager.send_personal(json.dumps({
+                            "type": "system",
+                            "content": f"【DELIVERED】 Your gift to {t_nick} has been successfully delivered.",
+                            "timestamp": datetime.now().isoformat()
+                        }), client_id)
+
+                # Run delivery in background with captured data
+                asyncio.create_task(deliver(target_uuid, target_nickname, found_item, quantity))
+                return
+            else:
+                # ADMIN GIVE ALL (Gift from engine)
+                # Does not deduct from admin inventory.
+                gift_item_name = item_name # Use provided name
+                count = 0
+                for nick in list(manager.active_connections.keys()):
+                    if nick == client_id: continue
+                    
+                    p_data = manager.player_data.get(nick, {})
+                    p_inv = p_data.get("inventory", {})
+                    
+                    target_found_item = None
+                    for inv_item in p_inv:
+                        if inv_item.lower() == gift_item_name.lower():
+                            target_found_item = inv_item
+                            break
+                    
+                    if target_found_item:
+                        p_inv[target_found_item] += quantity
+                    else:
+                        p_inv[gift_item_name] = quantity
+                    
+                    await manager.save_player_to_db(nick)
+                    await manager.send_personal(json.dumps({
+                        "type": "system",
+                        "content": f"【GIFT】 The Omni-Engine ({client_id}) has granted everyone {quantity}x '{gift_item_name}'!",
+                        "timestamp": datetime.now().isoformat()
+                    }), nick)
+                    count += 1
+                
+                await manager.send_personal(json.dumps({
+                    "type": "system",
+                    "content": f"【ADMIN】 You granted {quantity}x '{gift_item_name}' to {count} online players.",
+                    "timestamp": datetime.now().isoformat()
+                }), client_id)
             
     elif cmd == "/do":
         # Rate Limiting (2.0s cooldown)
@@ -3100,6 +3367,12 @@ def is_supporter(user_id: str) -> bool:
     supporters = world_data.get("supporters", {})
     return user_id in supporters and supporters[user_id].get("is_supporter", False)
 
+def is_admin(user_id: str) -> bool:
+    """Check if user is an admin (privileged commands)"""
+    admin_env = os.getenv("ADMIN_UUIDS", "").strip()
+    ADMIN_UUIDS = [uuid.strip() for uuid in admin_env.split(",") if uuid.strip()]
+    return user_id in ADMIN_UUIDS
+
 async def handle_move(client_id: str, direction: str):
     """Handle movement"""
     direction = direction.lower().strip()
@@ -3398,7 +3671,7 @@ def get_location_description(position: List[int], offset_hours: float = 0) -> st
     
     return f"[{time_info['period']}] {biome['name']} ({x}, {y}, z={z}) - {z_text}"
 
-async def get_location_description_detailed(position: List[int], client_id: str, target: str = "") -> str:
+async def get_location_description_detailed(position: List[int], client_id: str) -> str:
     """Detailed location description (5 senses + weather) - with z-axis"""
     global world_data, manager
     x = position[0] if len(position) > 0 else 0
@@ -3419,49 +3692,6 @@ async def get_location_description_detailed(position: List[int], client_id: str,
         obj_pos = ensure_int_position(obj.get("position", [999, 999]))
         if abs(obj_pos[0] - x) <= 2 and abs(obj_pos[1] - y) <= 2:
             nearby_objects.append(obj)
-
-    # Check for other players nearby (Souls)
-    nearby_souls = []
-    for pid, pdata in world_data.get("users", {}).items():
-        if pid != client_id:
-            ppos = ensure_int_position(pdata.get("position", [999, 999]))
-            if abs(ppos[0] - x) <= 2 and abs(ppos[1] - y) <= 2:
-                nearby_souls.append(pdata)
-
-    # TARGETED LOOK: If target is specified, return detailed info for that specific thing
-    if target:
-        target_clean = target.lower().strip()
-        
-        # 1. Search in nearby objects
-        for obj in nearby_objects:
-            name_en = obj.get("name_en", "").lower()
-            name_ko = obj.get("name", "").lower()
-            if target_clean in name_en or target_clean in name_ko:
-                obj_name = obj.get("name_en", obj.get("name", "Something"))
-                obj_desc = obj.get("description", "A mysterious object.")
-                obj_props = obj.get("properties", {})
-                
-                detail_desc = f"【EXAMINE: {obj_name}】\n\n{obj_desc}"
-                if obj_props:
-                    detail_desc += "\n\n[Properties]"
-                    for k, v in obj_props.items():
-                        detail_desc += f"\n  • {k}: {v}"
-                return detail_desc
-        
-        # 2. Search in nearby souls
-        for soul in nearby_souls:
-            nickname = soul.get("nickname", "A stranger").lower()
-            if target_clean in nickname:
-                status = soul.get("status", "Existing")
-                return f"【SOUL: {soul.get('nickname')}】\n\nYou observe the other soul carefully. Their state: {status}."
-                
-        # 3. Handle special keywords
-        if target_clean in ["me", "self", "body"]:
-            return "Try /check to examine yourself in detail."
-            
-        return f"You look for '{target}', but you don't see anything by that name nearby."
-    
-    # --- Regular /look (No Target) ---
     
     # Z-axis environmental description
     altitude_desc = get_altitude_description(z)
@@ -3532,14 +3762,6 @@ async def get_location_description_detailed(position: List[int], client_id: str,
 Faint letters are carved into its surface: "Hello, World!"
 Mountains of waste surround the area."""
     
-    # Nearby souls description
-    if nearby_souls:
-        desc += "\n\n【NEARBY SOULS】"
-        for soul in nearby_souls[:5]:
-            nick = soul.get("nickname", "A stranger")
-            status = soul.get("status", "Existing")
-            desc += f"\n  • {nick}: {status[:30]}..."
-
     # Nearby objects description
     if nearby_objects:
         desc += "\n\n【NEARBY OBJECTS】"
@@ -3551,31 +3773,30 @@ Mountains of waste surround the area."""
             else:
                 desc += f"\n  • {obj_name}"
     
-    # Legacy presence detection (for online status visualization)
-    online_nicks = []
-    for pid in manager.player_data:
+    # Check for other players nearby
+    nearby_players = []
+    for pid, pdata in manager.player_data.items():
         if pid != client_id:
-            pdata = manager.player_data[pid]
             ppos = ensure_int_position(pdata.get("position", [999, 999]))
             if abs(ppos[0] - x) <= 3 and abs(ppos[1] - y) <= 3:
-                online_nicks.append(pdata.get("nickname", pid))
+                nearby_players.append(pid)
     
-    if online_nicks:
-        desc += f"\n\n【PRESENCE】 You sense the active presence of {', '.join(online_nicks)} nearby."
+    if nearby_players:
+        desc += f"\n\n【PRESENCE】 You sense the presence of {', '.join(nearby_players)} nearby."
     
     return desc
 
 async def translate_to_english(text: str, api_key: str, model: str = "gpt-4o") -> str:
     """
-    유저 입력을 영어로 번역 (채팅/say용)
-    - 이미 영어면 그대로 반환
-    - 다른 언어면 자연스러운 영어로 번역
-    - 타임아웃 5초
+    Translate user input to English (for chat/say)
+    - Returns original if already in English
+    - Translates other languages to natural English
+    - 5-second timeout
     """
-    # 간단한 영어 검사 (ASCII 비율로 판단)
+    # Simple English check (based on ASCII ratio)
     ascii_ratio = sum(1 for c in text if ord(c) < 128) / max(len(text), 1)
     if ascii_ratio > 0.9:
-        return text  # 이미 영어로 보임
+        return text  # Already seems like English
     
     try:
         response = await asyncio.wait_for(
@@ -3589,18 +3810,18 @@ async def translate_to_english(text: str, api_key: str, model: str = "gpt-4o") -
                 temperature=0.3,
                 max_tokens=500
             ),
-            timeout=5.0  # 5초 타임아웃 (채팅은 빠르게)
+            timeout=5.0  # 5-second timeout (chat should be fast)
         )
         translated = response.choices[0].message.content.strip()
-        # 따옴표 제거 (AI가 따옴표로 감싸는 경우)
+        # Remove quotes (if AI wraps the result)
         if translated.startswith('"') and translated.endswith('"'):
             translated = translated[1:-1]
         return translated
     except asyncio.TimeoutError:
-        return text  # 타임아웃 시 원본 반환
+        return text  # Return original on timeout
     except Exception as e:
         print(f"[TRANSLATE ERROR] {e}")
-        return text  # 에러 시 원본 반환
+        return text  # Return original on error
 
 async def process_action(client_id: str, action: str, api_key: str, model: str = "gpt-4o", is_guest: bool = False):
     """Action processing via AI"""
