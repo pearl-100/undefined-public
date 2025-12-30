@@ -1795,7 +1795,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 "name_set": False,
                 "position": saved_position,
                 "status": "Healthy",
-                "inventory": {},
+                "inventory": {"Architects_Warm_Heart": 1},
                 "attributes": initial_attributes,
                 "skills": {},
                 "time_offset": 0,
@@ -2732,13 +2732,11 @@ Last Modified: {meta.get('last_modified', 'Unknown')}
             # ADMIN BROADCAST
             if target_nickname.lower() == "all":
                 if is_admin(user_id):
-                    # Translate to English via AI
-                    translated = await translate_to_english(message, api_key, model)
                     broadcast_msg = json.dumps({
                         "type": "chat",
                         "speaker": f"【ADMIN】 {client_id}",
                         "original": message,
-                        "content": f'【GLOBAL FROM {client_id}】: "{translated}"',
+                        "content": f'【GLOBAL FROM {client_id}】: "{message}"',
                         "is_supporter": True,
                         "timestamp": datetime.now().isoformat()
                     })
@@ -2760,15 +2758,12 @@ Last Modified: {meta.get('last_modified', 'Unknown')}
                 }), client_id)
                 return
 
-            # Translate to English via AI
-            translated = await translate_to_english(message, api_key, model)
-            
             # Send to target
             await manager.send_personal(json.dumps({
                 "type": "chat",
                 "speaker": client_id,
                 "original": message,
-                "content": f'【WHISPER from {client_id}】: "{translated}"',
+                "content": f'【WHISPER from {client_id}】: "{message}"',
                 "is_supporter": is_supporter(user_id) if user_id else False,
                 "timestamp": datetime.now().isoformat()
             }), target_nickname)
@@ -2777,7 +2772,7 @@ Last Modified: {meta.get('last_modified', 'Unknown')}
             await manager.send_personal(json.dumps({
                 "type": "chat",
                 "speaker": client_id,
-                "content": f'【To {target_nickname}】: "{translated}"',
+                "content": f'【To {target_nickname}】: "{message}"',
                 "timestamp": datetime.now().isoformat()
             }), client_id)
 
@@ -2954,38 +2949,50 @@ Last Modified: {meta.get('last_modified', 'Unknown')}
                 asyncio.create_task(deliver(target_uuid, target_nickname, found_item, quantity))
                 return
             else:
-                # ADMIN GIVE ALL (Gift from engine)
-                # Does not deduct from admin inventory.
-                gift_item_name = item_name # Use provided name
-                count = 0
-                for nick in list(manager.active_connections.keys()):
-                    if nick == client_id: continue
-                    
-                    p_data = manager.player_data.get(nick, {})
-                    p_inv = p_data.get("inventory", {})
-                    
-                    target_found_item = None
-                    for inv_item in p_inv:
-                        if inv_item.lower() == gift_item_name.lower():
-                            target_found_item = inv_item
-                            break
-                    
-                    if target_found_item:
-                        p_inv[target_found_item] += quantity
-                    else:
-                        p_inv[gift_item_name] = quantity
-                    
-                    await manager.save_player_to_db(nick)
-                    await manager.send_personal(json.dumps({
-                        "type": "system",
-                        "content": f"【GIFT】 The Omni-Engine ({client_id}) has granted everyone {quantity}x '{gift_item_name}'!",
-                        "timestamp": datetime.now().isoformat()
-                    }), nick)
-                    count += 1
+                # ADMIN GIVE ALL (Gift from engine to ALL registered users)
+                gift_item_name = item_name
+                online_count = 0
+                total_count = 0
+                
+                # 1. Update ALL users in world_data (including offline)
+                if "users" in world_data:
+                    db = await get_db()
+                    for u_id, u_data in world_data["users"].items():
+                        if not isinstance(u_data, dict): continue
+                        
+                        inv = u_data.setdefault("inventory", {})
+                        
+                        # Find item case-insensitive
+                        found = None
+                        for inv_item in inv:
+                            if inv_item.lower() == gift_item_name.lower():
+                                found = inv_item
+                                break
+                        
+                        if found:
+                            inv[found] += quantity
+                        else:
+                            inv[gift_item_name] = quantity
+                        
+                        # Save to DB for each user
+                        await db.save_user(u_id, u_data)
+                        total_count += 1
+                        
+                        # If online, update their in-memory player_data and notify
+                        # Find nickname for this UUID
+                        u_nick = u_data.get("nickname")
+                        if u_nick and u_nick in manager.active_connections:
+                            manager.player_data[u_nick]["inventory"] = inv
+                            await manager.send_personal(json.dumps({
+                                "type": "system",
+                                "content": f"【GIFT】 The Omni-Engine has granted everyone {quantity}x '{gift_item_name}'!",
+                                "timestamp": datetime.now().isoformat()
+                            }), u_nick)
+                            online_count += 1
                 
                 await manager.send_personal(json.dumps({
                     "type": "system",
-                    "content": f"【ADMIN】 You granted {quantity}x '{gift_item_name}' to {count} online players.",
+                    "content": f"【ADMIN】 Successfully granted '{gift_item_name}' to {total_count} users ({online_count} currently online).",
                     "timestamp": datetime.now().isoformat()
                 }), client_id)
             
@@ -3785,43 +3792,6 @@ Mountains of waste surround the area."""
         desc += f"\n\n【PRESENCE】 You sense the presence of {', '.join(nearby_players)} nearby."
     
     return desc
-
-async def translate_to_english(text: str, api_key: str, model: str = "gpt-4o") -> str:
-    """
-    Translate user input to English (for chat/say)
-    - Returns original if already in English
-    - Translates other languages to natural English
-    - 5-second timeout
-    """
-    # Simple English check (based on ASCII ratio)
-    ascii_ratio = sum(1 for c in text if ord(c) < 128) / max(len(text), 1)
-    if ascii_ratio > 0.9:
-        return text  # Already seems like English
-    
-    try:
-        response = await asyncio.wait_for(
-            litellm.acompletion(
-                model=model,
-                api_key=api_key,
-                messages=[
-                    {"role": "system", "content": "You are a translator. Translate the user's message to natural English. Output ONLY the translated text, nothing else. Keep the tone and emotion."},
-                    {"role": "user", "content": text}
-                ],
-                temperature=0.3,
-                max_tokens=500
-            ),
-            timeout=5.0  # 5-second timeout (chat should be fast)
-        )
-        translated = response.choices[0].message.content.strip()
-        # Remove quotes (if AI wraps the result)
-        if translated.startswith('"') and translated.endswith('"'):
-            translated = translated[1:-1]
-        return translated
-    except asyncio.TimeoutError:
-        return text  # Return original on timeout
-    except Exception as e:
-        print(f"[TRANSLATE ERROR] {e}")
-        return text  # Return original on error
 
 async def process_action(client_id: str, action: str, api_key: str, model: str = "gpt-4o", is_guest: bool = False):
     """Action processing via AI"""
