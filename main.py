@@ -2957,7 +2957,8 @@ Last Modified: {meta.get('last_modified', 'Unknown')}
                 # 1. Update ALL users in world_data (including offline)
                 if "users" in world_data:
                     db = await get_db()
-                    for u_id, u_data in world_data["users"].items():
+                    # Use list() to avoid RuntimeError if dict changes during iteration
+                    for u_id, u_data in list(world_data["users"].items()):
                         if not isinstance(u_data, dict): continue
                         
                         inv = u_data.setdefault("inventory", {})
