@@ -2954,22 +2954,116 @@ Last Modified: {meta.get('last_modified', 'Unknown')}
             # Usually admin 'give all' should be an 'infinite' give.
             # But the user asked for /give to be remote transfer.
             # Let's check if user is admin.
-            admin_gift = False
+            is_user_admin = is_admin(user_id)
             if target_nickname.lower() == "all":
-                if not is_admin(user_id):
+                if not is_user_admin:
                     await manager.send_personal(json.dumps({
                         "type": "error",
                         "content": "[ERROR] Only admins can use '/give all'.",
                         "timestamp": datetime.now().isoformat()
                     }), client_id)
                     return
-                admin_gift = True
-
-            sender_data = manager.player_data.get(client_id, {})
-            sender_inv = sender_data.get("inventory", {})
+                
+                # --- ADMIN GIVE ALL (Instant) ---
+                gift_item_name = item_name
+                online_count = 0
+                total_count = 0
+                
+                if "users" in world_data:
+                    db = await get_db()
+                    for u_id, u_data in list(world_data["users"].items()):
+                        if not isinstance(u_data, dict): continue
+                        inv = u_data.setdefault("inventory", {})
+                        found = None
+                        for inv_item in inv:
+                            if inv_item.lower() == gift_item_name.lower():
+                                found = inv_item
+                                break
+                        if found: inv[found] += quantity
+                        else: inv[gift_item_name] = quantity
+                        await db.save_user(u_id, u_data)
+                        total_count += 1
+                        u_nick = u_data.get("nickname")
+                        if u_nick and u_nick in manager.active_connections:
+                            manager.player_data[u_nick]["inventory"] = inv
+                            await manager.send_personal(json.dumps({
+                                "type": "system",
+                                "content": f"【GIFT】 The Omni-Engine has granted everyone {quantity}x '{gift_item_name}'!",
+                                "timestamp": datetime.now().isoformat()
+                            }), u_nick)
+                            online_count += 1
+                
+                await manager.send_personal(json.dumps({
+                    "type": "system",
+                    "content": f"【ADMIN】 Successfully granted '{gift_item_name}' to {total_count} users ({online_count} currently online).",
+                    "timestamp": datetime.now().isoformat()
+                }), client_id)
+                return
             
-            found_item = None
-            if not admin_gift:
+            elif is_user_admin:
+                # --- ADMIN GIVE TO ONE (Instant Spawn) ---
+                target_uuid = manager.get_uuid_by_nickname(target_nickname)
+                if not target_uuid:
+                    await manager.send_personal(json.dumps({
+                        "type": "error",
+                        "content": f"[ERROR] User '{target_nickname}' not found.",
+                        "timestamp": datetime.now().isoformat()
+                    }), client_id)
+                    return
+                
+                is_online = target_nickname in manager.active_connections
+                t_data = manager.player_data.get(target_nickname) if is_online else None
+                
+                if not t_data:
+                    # Offline check
+                    if target_uuid in world_data.get("users", {}):
+                        t_data = world_data["users"][target_uuid]
+                    else:
+                        db = await get_db()
+                        t_data = await db.get_user(target_uuid)
+                
+                if not t_data:
+                    await manager.send_personal(json.dumps({
+                        "type": "error",
+                        "content": f"[ERROR] Could not load data for {target_nickname}.",
+                        "timestamp": datetime.now().isoformat()
+                    }), client_id)
+                    return
+
+                inv = t_data.setdefault("inventory", {})
+                found = None
+                for inv_item in inv:
+                    if inv_item.lower() == item_name.lower():
+                        found = inv_item
+                        break
+                if found: inv[found] += quantity
+                else: inv[item_name] = quantity
+                
+                if is_online:
+                    await manager.save_player_to_db(target_nickname)
+                    await manager.send_personal(json.dumps({
+                        "type": "system",
+                        "content": f"【GIFT】 Admin has granted you {quantity}x '{item_name}'!",
+                        "timestamp": datetime.now().isoformat()
+                    }), target_nickname)
+                else:
+                    world_data.setdefault("users", {})[target_uuid] = t_data
+                    db = await get_db()
+                    await db.save_user(target_uuid, t_data)
+                
+                await manager.send_personal(json.dumps({
+                    "type": "system",
+                    "content": f"【ADMIN】 Successfully granted {quantity}x '{item_name}' to {target_nickname}.",
+                    "timestamp": datetime.now().isoformat()
+                }), client_id)
+                return
+            
+            else:
+                # --- REGULAR PLAYER GIVE (Transfer with Delay) ---
+                sender_data = manager.player_data.get(client_id, {})
+                sender_inv = sender_data.get("inventory", {})
+                
+                found_item = None
                 # Regular give: check inventory
                 for inv_item in sender_inv:
                     if inv_item.lower() == item_name.lower():
@@ -3049,7 +3143,7 @@ Last Modified: {meta.get('last_modified', 'Unknown')}
                     if not r_data:
                         print(f"[ERROR] Delivery failed: target {t_uuid} not found after delay.")
                         return
-
+                    
                     r_inv = r_data.setdefault("inventory", {})
                     
                     target_found_item = None
@@ -3091,54 +3185,6 @@ Last Modified: {meta.get('last_modified', 'Unknown')}
                 # Run delivery in background with captured data
                 asyncio.create_task(deliver(target_uuid, target_nickname, found_item, quantity))
                 return
-            else:
-                # ADMIN GIVE ALL (Gift from engine to ALL registered users)
-                gift_item_name = item_name
-                online_count = 0
-                total_count = 0
-                
-                # 1. Update ALL users in world_data (including offline)
-                if "users" in world_data:
-                    db = await get_db()
-                    # Use list() to avoid RuntimeError if dict changes during iteration
-                    for u_id, u_data in list(world_data["users"].items()):
-                        if not isinstance(u_data, dict): continue
-                        
-                        inv = u_data.setdefault("inventory", {})
-                        
-                        # Find item case-insensitive
-                        found = None
-                        for inv_item in inv:
-                            if inv_item.lower() == gift_item_name.lower():
-                                found = inv_item
-                                break
-                        
-                        if found:
-                            inv[found] += quantity
-                        else:
-                            inv[gift_item_name] = quantity
-                        
-                        # Save to DB for each user
-                        await db.save_user(u_id, u_data)
-                        total_count += 1
-                        
-                        # If online, update their in-memory player_data and notify
-                        # Find nickname for this UUID
-                        u_nick = u_data.get("nickname")
-                        if u_nick and u_nick in manager.active_connections:
-                            manager.player_data[u_nick]["inventory"] = inv
-                            await manager.send_personal(json.dumps({
-                                "type": "system",
-                                "content": f"【GIFT】 The Omni-Engine has granted everyone {quantity}x '{gift_item_name}'!",
-                                "timestamp": datetime.now().isoformat()
-                            }), u_nick)
-                            online_count += 1
-                
-                await manager.send_personal(json.dumps({
-                    "type": "system",
-                    "content": f"【ADMIN】 Successfully granted '{gift_item_name}' to {total_count} users ({online_count} currently online).",
-                    "timestamp": datetime.now().isoformat()
-                }), client_id)
             
     elif cmd == "/do":
         # Rate Limiting (2.0s cooldown)
