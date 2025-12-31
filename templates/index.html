@@ -139,6 +139,7 @@
         .log-entry.action { color: var(--action-color); }
         .log-entry.chat { color: #ffcc00; }
         .log-entry.death { color: #ff0000; font-weight: bold; }
+        .log-entry.action-summary { color: var(--dim-color); font-style: italic; font-size: 13px; }
         
         /* Supporter (Gold) username styling */
         .supporter-name { color: #FFD700 !important; font-weight: bold; }
@@ -784,6 +785,17 @@
                     break;
                 case 'blueprint':
                     content = escapeHtml(data.content);
+                    break;
+                case 'action_summary':
+                    const summaryActor = escapeHtml(data.actor);
+                    const summaryAction = escapeHtml(data.action);
+                    const summarySuccess = data.success !== false;
+                    if (summarySuccess) {
+                        content = `[${summaryActor}] ${summaryAction}`;
+                    } else {
+                        content = `[${summaryActor}] attempted to ${summaryAction} (failed)`;
+                    }
+                    msgType = 'action-summary';
                     break;
                 case 'uuid_display':
                     // Put UUID in input field for easy copy
