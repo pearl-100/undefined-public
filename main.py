@@ -1547,6 +1547,9 @@ async def lifespan(app: FastAPI):
     # Load world_data cache from DB
     world_data = await load_world_data_from_db()
     
+    # Register Welcome Kit to DB
+    await register_welcome_kit_to_db()
+    
     # Initialize all_nicknames set (Optimization O(1))
     all_nicknames = set()
     users = world_data.get("users", {})
@@ -1795,7 +1798,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 "name_set": False,
                 "position": saved_position,
                 "status": "Healthy",
-                "inventory": {"Architects_Warm_Heart": 1},
+                "inventory": WELCOME_KIT_ITEMS.copy(),
                 "attributes": initial_attributes,
                 "skills": {},
                 "time_offset": 0,
@@ -2974,13 +2977,28 @@ Last Modified: {meta.get('last_modified', 'Unknown')}
                     for u_id, u_data in list(world_data["users"].items()):
                         if not isinstance(u_data, dict): continue
                         inv = u_data.setdefault("inventory", {})
-                        found = None
-                        for inv_item in inv:
-                            if inv_item.lower() == gift_item_name.lower():
-                                found = inv_item
-                                break
-                        if found: inv[found] += quantity
-                        else: inv[gift_item_name] = quantity
+                        
+                        # Special Case: WELCOME_KIT
+                        if gift_item_name.upper() == "WELCOME_KIT":
+                            for kit_item, kit_qty in WELCOME_KIT_ITEMS.items():
+                                found = None
+                                for inv_item in inv:
+                                    if inv_item.lower() == kit_item.lower():
+                                        found = inv_item
+                                        break
+                                if found: inv[found] += kit_qty * quantity
+                                else: inv[kit_item] = kit_qty * quantity
+                            msg_content = f"【GIFT】 The Omni-Engine has granted everyone {quantity}x 'Welcome Kit'!"
+                        else:
+                            found = None
+                            for inv_item in inv:
+                                if inv_item.lower() == gift_item_name.lower():
+                                    found = inv_item
+                                    break
+                            if found: inv[found] += quantity
+                            else: inv[gift_item_name] = quantity
+                            msg_content = f"【GIFT】 The Omni-Engine has granted everyone {quantity}x '{gift_item_name}'!"
+
                         await db.save_user(u_id, u_data)
                         total_count += 1
                         u_nick = u_data.get("nickname")
@@ -2988,7 +3006,7 @@ Last Modified: {meta.get('last_modified', 'Unknown')}
                             manager.player_data[u_nick]["inventory"] = inv
                             await manager.send_personal(json.dumps({
                                 "type": "system",
-                                "content": f"【GIFT】 The Omni-Engine has granted everyone {quantity}x '{gift_item_name}'!",
+                                "content": msg_content,
                                 "timestamp": datetime.now().isoformat()
                             }), u_nick)
                             online_count += 1
@@ -3527,6 +3545,102 @@ def ensure_int_position(pos) -> list:
     y = int(pos[1]) if pos[1] is not None else 0
     z = int(pos[2]) if len(pos) > 2 and pos[2] is not None else 0
     return [x, y, z]
+
+# ═══════════════════════════════════════════════════════════════════
+#                          WELCOME KIT SYSTEM
+# ═══════════════════════════════════════════════════════════════════
+
+WELCOME_KIT_DEFINITION = [
+    {
+        "id": "Chemical_Experiment_Kit",
+        "name": "Chemical Experiment Kit",
+        "name_en": "Chemical Experiment Kit",
+        "category": "tool",
+        "description": "A kit containing basic chemicals, beakers, and tools needed for chemical experiments. Can be used to manufacture gunpowder, medicine, or analyze substances.",
+        "properties": {"can_produce": ["gunpowder", "medicine", "acid"], "required_skill": "Chemistry", "durability": 100}
+    },
+    {
+        "id": "Survival_Multitool",
+        "name": "Survival Multitool",
+        "name_en": "Survival Multitool",
+        "category": "tool",
+        "description": "A high-quality multitool including pliers, knives, screwdrivers, and a saw. Essential for crafting and repairs.",
+        "properties": {"versatility": "high", "crafting_bonus": 2, "durability": 150}
+    },
+    {
+        "id": "Advanced_LED_Flashlight",
+        "name": "Advanced LED Flashlight",
+        "name_en": "Advanced LED Flashlight",
+        "category": "tool",
+        "description": "A durable, rechargeable flashlight with a powerful beam. Essential for exploring dark areas.",
+        "properties": {"brightness": "5000 lumens", "battery": "solar_rechargeable", "durability": 80}
+    },
+    {
+        "id": "Military_First_Aid_Kit",
+        "name": "Military First Aid Kit",
+        "name_en": "Military First Aid Kit",
+        "category": "medical",
+        "description": "A comprehensive medical kit containing bandages, antiseptics, painkillers, and surgical tools.",
+        "properties": {"heal_amount": 50, "treats": ["bleeding", "infection", "pain"], "uses": 10}
+    },
+    {
+        "id": "All-Weather_Tent",
+        "name": "All-Weather Tent",
+        "name_en": "All-Weather Tent",
+        "category": "shelter",
+        "description": "A compact, easy-to-set-up tent that provides excellent protection against harsh weather and decay.",
+        "properties": {"capacity": 2, "protection_level": "high", "insulation": True}
+    },
+    {
+        "id": "Water_Purification_System",
+        "name": "Water Purification System",
+        "name_en": "Water Purification System",
+        "category": "survival",
+        "description": "A portable filtration device that can turn contaminated water into safe, drinkable water.",
+        "properties": {"output": "clean_water", "filter_life": 500, "speed": "fast"}
+    },
+    {
+        "id": "High-Calorie_Nutrition_Blocks",
+        "name": "High-Calorie Nutrition Blocks",
+        "name_en": "High-Calorie Nutrition Blocks",
+        "category": "food",
+        "description": "A pack of nutrient-dense food bars designed for long-term survival. One block can sustain a person for a whole day.",
+        "properties": {"calories": 2500, "nutrition": "balanced", "shelf_life": "years"}
+    },
+    {
+        "id": "Survival_Guidebook",
+        "name": "Survival Guidebook",
+        "name_en": "Survival Guidebook",
+        "category": "misc",
+        "description": "A manual filled with knowledge about foraging, crafting, and surviving in 'undefined'. Increases the success rate of various actions.",
+        "properties": {"intelligence_bonus": 1, "unlocks": "basic_recipes", "permanent": True}
+    }
+]
+
+WELCOME_KIT_ITEMS = {
+    "Chemical_Experiment_Kit": 1,
+    "Survival_Multitool": 1,
+    "Advanced_LED_Flashlight": 1,
+    "Military_First_Aid_Kit": 1,
+    "All-Weather_Tent": 1,
+    "Water_Purification_System": 1,
+    "High-Calorie_Nutrition_Blocks": 10,
+    "Survival_Guidebook": 1,
+    "Architects_Warm_Heart": 1
+}
+
+async def register_welcome_kit_to_db():
+    """Register all welcome kit items as object types in the database"""
+    global db_instance
+    if db_instance is None:
+        db_instance = await get_db()
+    
+    print("[SYSTEM] Registering Welcome Kit items to DB...")
+    for item_def in WELCOME_KIT_DEFINITION:
+        await db_instance.save_object_type(item_def["id"], item_def)
+    print(f"[SYSTEM] {len(WELCOME_KIT_DEFINITION)} Welcome Kit items registered.")
+
+# ═══════════════════════════════════════════════════════════════════
 
 def ensure_player_data(client_id: str):
     """Initialize player_data if not exists (with z-axis and evolution fields)"""
