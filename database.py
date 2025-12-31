@@ -562,6 +562,68 @@ class Database:
                 })
         return logs
 
+    async def search_logs(self, query: str, limit: int = 50) -> List[dict]:
+        """Search logs by keyword (case-insensitive)"""
+        logs = []
+        pattern = f"%{query}%"
+        try:
+            async with self.conn.execute(
+                "SELECT * FROM logs WHERE (action LIKE ? OR result LIKE ?) ORDER BY id DESC LIMIT ?",
+                (pattern, pattern, limit)
+            ) as cursor:
+                async for r in cursor:
+                    logs.append({
+                        "id": int(r["id"]),
+                        "timestamp": r["timestamp"],
+                        "actor": r["actor"],
+                        "action": r["action"],
+                        "result": r["result"]
+                    })
+        except Exception as e:
+            print(f"[DB ERROR] search_logs: {e}")
+        return logs
+
+    async def get_logs_by_actor(self, actor: str, limit: int = 100) -> List[dict]:
+        """Get logs for a specific actor"""
+        logs = []
+        try:
+            async with self.conn.execute(
+                "SELECT * FROM logs WHERE actor = ? ORDER BY id DESC LIMIT ?",
+                (actor, limit)
+            ) as cursor:
+                async for r in cursor:
+                    logs.append({
+                        "id": int(r["id"]),
+                        "timestamp": r["timestamp"],
+                        "actor": r["actor"],
+                        "action": r["action"],
+                        "result": r["result"]
+                    })
+        except Exception as e:
+            print(f"[DB ERROR] get_logs_by_actor: {e}")
+        return logs
+
+    async def search_objects(self, query: str, limit: int = 20) -> List[dict]:
+        """Search world objects by name or description"""
+        objs = []
+        pattern = f"%{query}%"
+        try:
+            async with self.conn.execute(
+                "SELECT * FROM objects WHERE (name LIKE ? OR description LIKE ?) ORDER BY created_at DESC LIMIT ?",
+                (pattern, pattern, limit)
+            ) as cursor:
+                async for r in cursor:
+                    objs.append({
+                        "id": r["id"],
+                        "name": r["name"],
+                        "position": [r["x"], r["y"], r["z"]],
+                        "description": r["description"],
+                        "properties": json.loads(r["properties"] or "{}")
+                    })
+        except Exception as e:
+            print(f"[DB ERROR] search_objects: {e}")
+        return objs
+
     # ═══════════════════════════════════════════════════════════════════
     #                      LOG ARCHIVE + RETENTION
     # ═══════════════════════════════════════════════════════════════════

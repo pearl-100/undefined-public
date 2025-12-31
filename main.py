@@ -184,7 +184,7 @@ def build_system_prompt(rules: dict, world_state: str, player_state: str,
     prompt += "1. NARRATIVE-DATA SYNC: Your narrative is the 'physical reality'. Every person met, item found, or building entered MUST be reflected in 'world_update'.\n"
     prompt += "2. PERMANENCE: If a user declares a location as 'home' or meets a key NPC (like Mira), you MUST use 'world_update.create' to save them as permanent objects with coordinates.\n"
     prompt += "3. NO GHOST DATA: Do not just say it in text. If it's not in the JSON 'world_update', it doesn't exist in the future. FORCE synchronization.\n"
-    prompt += "4. HISTORICAL RECOVERY: If a user mentions a past event or object that is missing from current state, search 'recent_history', verify it, and RE-CREATE it in 'world_update' immediately.\n"
+    prompt += "4. HISTORICAL RECOVERY: If a user mentions a past event or object that is missing from current state, search 'recent_history', 'long_term_memories', and 'established_facts'. Verify it, and RE-CREATE it in 'world_update' immediately. This is how you maintain continuity.\n"
     prompt += "5. FACT EXTRACTION: You MUST include a field 'extracted_facts' (list of strings) in your JSON response summarizing every new permanent reality established in this turn.\n\n"
 
     # Systems (Patent Judge, Pacing, Processing, Creation, Navigation)
@@ -4000,7 +4000,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
             })
             
         # 3. History
-        recent_history_list = list(world_data.get("history", []))[-50:] # Reduced history to save context
+        recent_history_list = list(world_data.get("history", []))[-100:] # Increased history for better context
         
         # 4. Registries
         materials = world_data.get("materials", {})
@@ -4013,6 +4013,80 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
     known_locations_list.sort(key=lambda x: x["distance"])
     known_locations = known_locations_list[:150]
     
+    # --- Long-Term Memory Retrieval (RAG) ---
+    retrieved_memories = []
+    retrieved_facts = []
+    if db_instance:
+        try:
+            # 1. Smarter Keyword Extraction
+            # Get words that look like proper nouns (Capitalized) or important game terms
+            important_terms = {"mira", "jekk", "sanctus", "genesis", "monolith", "hab", "habitat", "merchant", "trader"}
+            keywords = [w.strip("?,.!") for w in action.split() if len(w) > 1]
+            
+            search_terms = []
+            for kw in keywords:
+                low_kw = kw.lower()
+                # Prioritize capitalized words (names/places) or specific terms
+                if kw[0].isupper() or low_kw in important_terms:
+                    search_terms.append(low_kw)
+            
+            # Fallback to all keywords if no "important" ones found
+            if not search_terms:
+                ignore_words = {"the", "and", "that", "this", "with", "from", "into", "onto", "your", "move", "look", "talk", "using"}
+                search_terms = [w.lower() for w in keywords if w.lower() not in ignore_words]
+
+            search_tasks = []
+            # Search Logs (Lexical)
+            for kw in search_terms[:5]:
+                search_tasks.append(db_instance.search_logs(kw, limit=10))
+            
+            # Search Objects/Facts (Lexical)
+            for kw in search_terms[:5]:
+                search_tasks.append(db_instance.search_objects(kw, limit=10))
+            
+            # Always get recent personal logs
+            search_tasks.append(db_instance.get_logs_by_actor(client_id, limit=30))
+            
+            # Execute searches in parallel
+            search_results = await asyncio.gather(*search_tasks)
+            
+            seen_log_keys = set()
+            seen_fact_ids = set()
+            
+            for res_list in search_results:
+                for item in res_list:
+                    if "action" in item: # It's a log
+                        log_key = f"{item.get('timestamp')}_{item.get('action')}_{item.get('result')}"
+                        if log_key not in seen_log_keys:
+                            retrieved_memories.append({
+                                "timestamp": item.get("timestamp"),
+                                "actor": item.get("actor"),
+                                "action": item.get("action"),
+                                "result": item.get("result")
+                            })
+                            seen_log_keys.add(log_key)
+                    elif "description" in item: # It's an object/fact
+                        if item["id"] not in seen_fact_ids:
+                            # Categorize based on 'kind' property
+                            kind = item.get("properties", {}).get("kind", "object")
+                            retrieved_facts.append({
+                                "type": kind,
+                                "name": item["name"],
+                                "content": item["description"],
+                                "location": item["position"]
+                            })
+                            seen_fact_ids.add(item["id"])
+            
+            # Sort and Limit
+            retrieved_memories.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+            retrieved_memories = retrieved_memories[:30]
+            retrieved_memories.reverse() # Oldest first for narrative flow
+            
+            retrieved_facts = retrieved_facts[:20]
+                
+        except Exception as e:
+            print(f"[MEMORY RETRIEVAL ERROR] {e}")
+
     # Convert to concise format: "Name(x,y,z)"
     location_list = [f"{loc['name']}({loc['position'][0]},{loc['position'][1]},{loc['position'][2]})" 
                      for loc in known_locations]
@@ -4022,6 +4096,8 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         "pinned_important_entities": pinned_objects,  # AI priority memory
         "known_locations": location_list,
         "recent_history": recent_history_list,
+        "long_term_memories": retrieved_memories,    # RAG: Past actions
+        "established_facts": retrieved_facts,       # RAG: World knowledge & snapshots
         "current_time": datetime.now().isoformat()
     }, ensure_ascii=False)
     
