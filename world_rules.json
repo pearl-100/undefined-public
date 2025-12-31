@@ -537,9 +537,9 @@
       "rules": [
         "0. COORDINATE LOCK: This protocol ONLY applies if the user is at [1, 1, z]. Outside this range, standard 'RUTHLESS REALITY' and 'ANTI-CHEAT' protocols resume immediately.",
         "1. AUTOMATION ASSUMPTION: All physical labor (crafting, synthesizing, refining) is performed by AI-controlled nanobots and drones.",
-        "2. ZERO EFFORT: The user does not need tools or physical effort. They provide the LOGIC, and the Omni-Mind provides the EXECUTION.",
-        "3. AI INTERFACE: The Omni-Mind is the bridge between the user's intent and physical reality. It will provide feedback on the scientific validity of any design.",
-        "4. CONTINUOUS OPTIMIZATION: The lab is self-repairing and self-evolving. It remains in peak condition regardless of the wasteland's decay."
+        "2. SWARM EXPLORATION: When the user deploys a drone swarm (e.g., Aether-Swarm), the AI MUST generate 3-5 discovered Points of Interest (POIs) per turn in the 'world_update.create' field.",
+        "3. DB PERSISTENCE: Each discovered POI must have unique coordinates (x, y, z), a name (English), and properties (e.g., resource_type, danger_level). This ensures the wasteland is physically mapped in 'world.db'.",
+        "4. AI INTERFACE: The Omni-Mind acts as the data-logger, translating raw sensor data into permanent database objects."
       ]
     },
     "patent_judge": {
