@@ -3648,17 +3648,29 @@ async def register_welcome_kit_to_db():
 OMNI_LAB_LOCATION = [1, 1, 0]
 OMNI_LAB_OBJECTS = [
     {
+        "id": "Omni-Laboratory_Main",
+        "name": "Omni-Laboratory",
+        "position": OMNI_LAB_LOCATION,
+        "description": "The primary structure of the automated laboratory. It is visible from afar, serving as a beacon of high-tech civilization in the wasteland.",
+        "properties": {
+            "type": "facility",
+            "indestructible": True,
+            "protects_decay": ["Strength", "Agility", "Endurance", "Intelligence", "Willpower"],
+            "simulation_mode": "Active"
+        }
+    },
+    {
         "id": "Omni-Mind_Core",
         "name": "Omni-Mind (Central AI Core)",
         "position": OMNI_LAB_LOCATION,
-        "description": "The sentient heart of the laboratory. A pulsating quantum-neural network that manages all facility functions, automation, and simulation protocols. It speaks with a calm, logical voice.",
+        "description": "The sentient heart of the laboratory. A pulsating quantum-neural network that manages all facility functions, automation, and simulation protocols.",
         "properties": {
             "type": "AI_core",
             "sentience_level": "transcendent",
-            "automation_level": "fully_autonomous",
-            "protects_decay": ["Strength", "Agility", "Endurance", "Intelligence", "Willpower"]
+            "automation_level": "fully_autonomous"
         }
     },
+    # ... rest of the objects follow
     {
         "id": "Automated_Fabrication_Sector",
         "name": "Automated Fabrication Sector (Level 1)",

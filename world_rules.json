@@ -535,6 +535,7 @@
       "name": "OMNI-LAB SIMULATION PROTOCOL",
       "principle": "Inside the Omni-Laboratory, the standard 'Law of Conservation' is augmented by the 'Infinite Resource Silo', all managed by the Omni-Mind AI.",
       "rules": [
+        "0. COORDINATE LOCK: This protocol ONLY applies if the user is at [1, 1, z]. Outside this range, standard 'RUTHLESS REALITY' and 'ANTI-CHEAT' protocols resume immediately.",
         "1. AUTOMATION ASSUMPTION: All physical labor (crafting, synthesizing, refining) is performed by AI-controlled nanobots and drones.",
         "2. ZERO EFFORT: The user does not need tools or physical effort. They provide the LOGIC, and the Omni-Mind provides the EXECUTION.",
         "3. AI INTERFACE: The Omni-Mind is the bridge between the user's intent and physical reality. It will provide feedback on the scientific validity of any design.",
