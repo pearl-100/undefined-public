@@ -1550,6 +1550,9 @@ async def lifespan(app: FastAPI):
     # Register Welcome Kit to DB
     await register_welcome_kit_to_db()
     
+    # Initialize Omni-Laboratory near spawn
+    await register_omni_laboratory_to_db()
+    
     # Initialize all_nicknames set (Optimization O(1))
     all_nicknames = set()
     users = world_data.get("users", {})
@@ -3639,6 +3642,87 @@ async def register_welcome_kit_to_db():
     for item_def in WELCOME_KIT_DEFINITION:
         await db_instance.save_object_type(item_def["id"], item_def)
     print(f"[SYSTEM] {len(WELCOME_KIT_DEFINITION)} Welcome Kit items registered.")
+
+# ═══════════════════════════════════════════════════════════════════
+
+OMNI_LAB_LOCATION = [1, 1, 0]
+OMNI_LAB_OBJECTS = [
+    {
+        "id": "Omni-Mind_Core",
+        "name": "Omni-Mind (Central AI Core)",
+        "position": OMNI_LAB_LOCATION,
+        "description": "The sentient heart of the laboratory. A pulsating quantum-neural network that manages all facility functions, automation, and simulation protocols. It speaks with a calm, logical voice.",
+        "properties": {
+            "type": "AI_core",
+            "sentience_level": "transcendent",
+            "automation_level": "fully_autonomous",
+            "protects_decay": ["Strength", "Agility", "Endurance", "Intelligence", "Willpower"]
+        }
+    },
+    {
+        "id": "Automated_Fabrication_Sector",
+        "name": "Automated Fabrication Sector (Level 1)",
+        "position": [1, 1, 1],
+        "description": "A hive of swarm-drones and nanobots that execute engineering tasks with zero human labor. They build, repair, and optimize structures based on the Omni-Mind's instructions.",
+        "properties": {
+            "type": "automated_workshop",
+            "units": ["Swarm_Drones", "Nanobot_Clouds", "Robotic_Arms"],
+            "labor_requirement": "none"
+        }
+    },
+    {
+        "id": "AI_Synthesis_Complex",
+        "name": "AI Synthesis Complex (Level 1)",
+        "position": [2, 1, 1],
+        "description": "A fully closed-loop chemical system. It automatically balances reactions and purifies substances at the molecular level, guided by the lab's central intelligence.",
+        "properties": {
+            "type": "automated_laboratory",
+            "efficiency": "flawless",
+            "monitoring": "real-time_AI_analysis"
+        }
+    },
+    {
+        "id": "Self-Sustaining_Energy_Grid",
+        "name": "Self-Sustaining Energy Grid (Level -1)",
+        "position": [1, 1, -1],
+        "description": "An autonomous energy management system that predicts and adapts to power requirements. It ensures the lab remains powered even if external conditions collapse.",
+        "properties": {
+            "type": "automated_power_grid",
+            "maintenance": "self-repairing",
+            "uptime": "99.999999%"
+        }
+    },
+    {
+        "id": "Autonomous_Resource_Harvester",
+        "name": "Autonomous Resource Harvester (Basement)",
+        "position": [0, 1, -1],
+        "description": "Drones and extractors that automatically scavenge and refine elements from the wasteland, feeding them into the infinite silo without user intervention.",
+        "properties": {
+            "type": "automated_harvester",
+            "cycle": "continuous",
+            "target": "all_known_elements"
+        }
+    }
+]
+
+async def register_omni_laboratory_to_db():
+    """Register the Omni-Laboratory and its components to the world database and sync memory cache"""
+    global db_instance, world_data
+    if db_instance is None:
+        db_instance = await get_db()
+    
+    print("[SYSTEM] Initializing Automated Omni-Laboratory near spawn...")
+    for obj_data in OMNI_LAB_OBJECTS:
+        await db_instance.save_object(obj_data["id"], obj_data)
+    
+    # CRITICAL: Sync memory cache with the newly registered objects
+    if "objects" not in world_data:
+        world_data["objects"] = {}
+    
+    for obj_data in OMNI_LAB_OBJECTS:
+        world_data["objects"][obj_data["id"]] = obj_data
+        
+    print(f"[SYSTEM] Omni-Laboratory and components synced to memory cache at {OMNI_LAB_LOCATION}.")
 
 # ═══════════════════════════════════════════════════════════════════
 
