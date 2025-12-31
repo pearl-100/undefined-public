@@ -189,7 +189,7 @@ def build_system_prompt(rules: dict, world_state: str, player_state: str,
 
     # Systems (Patent Judge, Pacing, Processing, Creation, Navigation)
     systems = rules.get('systems', {})
-    for sys_key in ['patent_judge', 'pacing', 'processing', 'creation', 'navigation', 'vertical']:
+    for sys_key in ['omni_lab_simulation', 'patent_judge', 'pacing', 'processing', 'creation', 'navigation', 'vertical']:
         sys = systems.get(sys_key, {})
         if sys:
             prompt += "═══════════════════════════════════════════════════════════════════\n"
@@ -3856,6 +3856,16 @@ def get_world_time(x: int, offset_hours: float = 0) -> dict:
 
 def get_biome(x: int, y: int) -> dict:
     """Biome determination by coordinates (Procedural Generation)"""
+    # (1,1) area: Omni-Laboratory (Priority over Junkyard)
+    if x == 1 and y == 1:
+        return {
+            "type": "omni_lab",
+            "name": "Omni-Laboratory",
+            "name_en": "Omni-Laboratory",
+            "description": "A pinnacle of existence and creation. Shimmering white surfaces and automated systems defy the surrounding decay.",
+            "ambient": "Humming electronics, sterile air, whirring machinery"
+        }
+
     # (0,0) area: Junkyard/Landfill
     if abs(x) <= 5 and abs(y) <= 5:
         return {
