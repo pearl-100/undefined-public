@@ -16,6 +16,8 @@ import shutil
 import random
 import asyncio
 import traceback
+import ast
+import operator
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from contextlib import asynccontextmanager
@@ -69,6 +71,136 @@ BACKUP_DIR = "backups"
 
 
 
+
+# === SECURITY UTILITIES ===
+
+class SafePythonInterpreter:
+    """
+    A high-security, AST-based Python interpreter for executing AI-generated logic.
+    Provides complete isolation by whitelisting specific AST nodes and operators,
+    preventing common sandbox escape techniques (like dunder-attribute traversal).
+    
+    Designed by Security Engineering to replace dangerous eval()/exec() calls.
+    """
+    def __init__(self):
+        # Whitelist of allowed operators mapping to their functional counterparts
+        self.allowed_operators = {
+            ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
+            ast.Div: operator.truediv, ast.FloorDiv: operator.floordiv,
+            ast.Pow: operator.pow, ast.Mod: operator.mod,
+            ast.USub: operator.neg, ast.UAdd: operator.pos,
+            ast.Eq: operator.eq, ast.NotEq: operator.ne,
+            ast.Lt: operator.lt, ast.LtE: operator.le,
+            ast.Gt: operator.gt, ast.GtE: operator.ge,
+            ast.And: operator.and_, ast.Or: operator.or_,
+            ast.Not: operator.not_,
+            ast.BitAnd: operator.and_, ast.BitOr: operator.or_, ast.BitXor: operator.xor,
+            ast.Invert: operator.invert, ast.LShift: operator.lshift, ast.RShift: operator.rshift,
+        }
+        
+        # Whitelist of safe built-in functions
+        self.allowed_functions = {
+            "abs": abs, "min": min, "max": max, "sum": sum, "round": round,
+            "int": int, "float": float, "len": len, "list": list, "dict": dict,
+            "range": range, "pow": pow,
+        }
+        
+        # Whitelist of safe modules (only attributes of these can be accessed)
+        self.allowed_modules = {
+            "math": __import__("math"),
+            "random": __import__("random"),
+        }
+
+    def _eval(self, node, locals_dict):
+        """Recursive AST evaluator."""
+        if isinstance(node, ast.Constant): # Python 3.8+
+            return node.value
+        elif isinstance(node, ast.Name):
+            if node.id in locals_dict:
+                return locals_dict[node.id]
+            if node.id in self.allowed_functions:
+                return self.allowed_functions[node.id]
+            if node.id in self.allowed_modules:
+                return self.allowed_modules[node.id]
+            raise NameError(f"Security Restriction: Access to name '{node.id}' is forbidden.")
+        elif isinstance(node, ast.BinOp):
+            left = self._eval(node.left, locals_dict)
+            right = self._eval(node.right, locals_dict)
+            if type(node.op) not in self.allowed_operators:
+                raise ValueError(f"Security Restriction: Operator {type(node.op).__name__} is forbidden.")
+            return self.allowed_operators[type(node.op)](left, right)
+        elif isinstance(node, ast.UnaryOp):
+            operand = self._eval(node.operand, locals_dict)
+            if type(node.op) not in self.allowed_operators:
+                raise ValueError(f"Security Restriction: Operator {type(node.op).__name__} is forbidden.")
+            return self.allowed_operators[type(node.op)](operand)
+        elif isinstance(node, ast.Attribute):
+            # Allow attribute access ONLY on whitelisted modules (e.g., math.sqrt)
+            # This prevents accessing __class__, __subclasses__, etc.
+            obj = self._eval(node.value, locals_dict)
+            if obj in self.allowed_modules.values():
+                return getattr(obj, node.attr)
+            raise ValueError(f"Security Restriction: Attribute access on {type(obj).__name__} is forbidden.")
+        elif isinstance(node, ast.Call):
+            func = self._eval(node.func, locals_dict)
+            args = [self._eval(arg, locals_dict) for arg in node.args]
+            kwargs = {kw.arg: self._eval(kw.value, locals_dict) for kw in node.keywords}
+            return func(*args, **kwargs)
+        elif isinstance(node, ast.List):
+            return [self._eval(elt, locals_dict) for elt in node.elts]
+        elif isinstance(node, ast.Dict):
+            return {self._eval(k, locals_dict): self._eval(v, locals_dict) for k, v in zip(node.keys, node.values)}
+        elif isinstance(node, ast.BoolOp):
+            values = [self._eval(v, locals_dict) for v in node.values]
+            if isinstance(node.op, ast.And):
+                res = values[0]
+                for v in values[1:]:
+                    res = res and v
+                return res
+            if isinstance(node.op, ast.Or):
+                res = values[0]
+                for v in values[1:]:
+                    res = res or v
+                return res
+        elif isinstance(node, ast.Compare):
+            left = self._eval(node.left, locals_dict)
+            for op, comparator in zip(node.ops, node.comparators):
+                right = self._eval(comparator, locals_dict)
+                if type(op) not in self.allowed_operators:
+                    raise ValueError(f"Security Restriction: Comparison operator {type(op).__name__} is forbidden.")
+                if not self.allowed_operators[type(op)](left, right):
+                    return False
+                left = right
+            return True
+        elif isinstance(node, (ast.NameConstant, ast.Num, ast.Str)): # Compatibility for older Python
+            return getattr(node, 'value', getattr(node, 'n', getattr(node, 's', None)))
+        else:
+            raise ValueError(f"Security Restriction: Expression type {type(node).__name__} is forbidden.")
+
+    def run(self, code: str, locals_dict: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Main entry point for safe execution.
+        """
+        if locals_dict is None:
+            locals_dict = {}
+        try:
+            tree = ast.parse(code)
+            for node in tree.body:
+                if isinstance(node, ast.Assign):
+                    value = self._eval(node.value, locals_dict)
+                    for target in node.targets:
+                        if isinstance(target, ast.Name):
+                            locals_dict[target.id] = value
+                        else:
+                            raise ValueError("Security Restriction: Complex assignment targets are forbidden.")
+                elif isinstance(node, ast.Expr):
+                    self._eval(node.value, locals_dict)
+                else:
+                    raise ValueError(f"Security Restriction: Statement type {type(node).__name__} is forbidden.")
+            return locals_dict
+        except Exception as e:
+            # Re-raise with a clear message that this was a security or parsing failure
+            raise RuntimeError(f"Safe Execution Failed: {str(e)}")
 
 def load_rules() -> dict:
     """
@@ -1630,21 +1762,16 @@ async def bmc_webhook(request: Request):
     """
     Buy Me a Coffee Webhook Handler (via Zapier)
     
-    BMC doesn't have direct webhooks, so use Zapier:
-    1. Create Zapier account (free tier works)
-    2. New Zap: Trigger = "Buy Me a Coffee" → "New Supporter"
-    3. Action = "Webhooks by Zapier" → "POST"
-    4. URL: https://your-server.com/webhook/bmc
-    5. Payload Type: JSON
-    6. Data:
-       - supporter_name: {{Supporter Name}}
-       - supporter_email: {{Supporter Email}}
-       - supporter_message: {{Support Message}}
-       - total_amount: {{Amount}}
-    
-    Alternative: Use /grant command manually (admin only)
+    Security: Verifies BMC_WEBHOOK_SECRET in headers.
     """
     global world_data
+    
+    # SECURITY: Verify webhook secret
+    if BMC_WEBHOOK_SECRET:
+        received_secret = request.headers.get("X-BMC-Secret")
+        if received_secret != BMC_WEBHOOK_SECRET:
+            print(f"[BMC WARNING] Unauthorized webhook attempt from {request.client.host}")
+            return {"status": "unauthorized"}
     
     try:
         data = await request.json()
@@ -4468,10 +4595,11 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
             }), client_id)
             return
         except exceptions.BadRequestError as e:
-            # 모델명 오류 등
+            # Model name errors, etc.
+            print(f"[LiteLLM BAD REQUEST] {e}")
             await manager.send_personal(json.dumps({
                 "type": "error",
-                "content": f"[ERROR] Bad Request: {str(e)}",
+                "content": "[ERROR] Bad Request. Please check your model or input.",
                 "timestamp": datetime.now().isoformat()
             }), client_id)
             return
@@ -4486,7 +4614,7 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
             print(f"[LiteLLM UNEXPECTED ERROR] {e}")
             await manager.send_personal(json.dumps({
                 "type": "error",
-                "content": f"[ERROR] AI Error: {str(e)}",
+                "content": "[ERROR] An internal AI error occurred. Please try again.",
                 "timestamp": datetime.now().isoformat()
             }), client_id)
             return
@@ -4598,17 +4726,10 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         python_code = result.get("python_code")
         if python_code and isinstance(python_code, str):
             try:
-                # Safe execution environment (Added random for probability)
-                safe_globals = {
-                    "__builtins__": None, 
-                    "math": __import__("math"), 
-                    "random": __import__("random"),
-                    "abs": abs, "min": min, "max": max, "sum": sum, "round": round, "int": int, "float": float
-                }
-                safe_locals = {}
-                
-                # Limit execution time/resources crudely by scope and simplicity
-                exec(python_code, safe_globals, safe_locals)
+                # SECURITY FIX: Use high-security SafePythonInterpreter (AST-based) instead of exec()
+                # This prevents common Python sandbox escapes (e.g., dunder-attribute traversal).
+                interpreter = SafePythonInterpreter()
+                safe_locals = interpreter.run(python_code)
                 
                 # 1. Check for 'calculated_value' (Generic Math)
                 if "calculated_value" in safe_locals:
@@ -4638,8 +4759,9 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
                     print(f"[MATH VERIFIED] {client_id} time skip: {hours}h (Total offset: {player['time_offset']}h)")
                     
             except Exception as e:
-                print(f"[MATH ERROR] Failed to execute AI python code: {e}")
-                narrative += f"\n\n[SYSTEM ERROR] Calculation failed: {e}"
+                # Log detailed error on server, send sanitized message to client
+                print(f"[MATH ERROR] Failed to execute AI python code for {client_id}: {e}")
+                narrative += f"\n\n[SYSTEM] A calculation error occurred. Reality is slightly distorted."
 
         # Optional: persist the narrative itself as a location "scene snapshot" object.
         scene_snapshot_id = None
@@ -4984,28 +5106,28 @@ async def process_action(client_id: str, action: str, api_key: str, model: str =
         return
         
     except Exception as e:
-        error_msg = str(e)
-        print(f"[LiteLLM ERROR] Client: {client_id}, Model: {model}, Error: {error_msg}")
-        print(f"[TRACEBACK]\n{traceback.format_exc()}")  # Print detailed traceback
+        # Log the full exception with traceback on the server
+        print(f"[LiteLLM ERROR] Client: {client_id}, Model: {model}, Error: {str(e)}")
+        print(f"[TRACEBACK]\n{traceback.format_exc()}")
         
         # User-friendly messages by error type
-        error_content = "[ERROR] AI is not responding. Please try again later."
+        error_content = "[ERROR] Reality is temporarily unstable. Please try again."
         
-        error_lower = error_msg.lower()
+        error_lower = str(e).lower()
         if "api_key" in error_lower or "auth" in error_lower or "invalid" in error_lower or "incorrect" in error_lower:
             error_content = "[ERROR] Invalid API key. Please check your settings."
         elif "model" in error_lower or "not found" in error_lower:
-            error_content = f"[ERROR] Model '{model}' not found. Please verify the model name."
+            error_content = f"[ERROR] Model configuration issue. Please verify the model name."
         elif "quota" in error_lower or "budget" in error_lower:
             error_content = "💸 Budget/Quota exceeded. Please check your API key balance."
         elif "rate" in error_lower:
-            error_content = "⏳ Rate limit exceeded (Too many requests). Please slow down."
+            error_content = "⏳ Rate limit exceeded. Please slow down."
         elif "limit" in error_lower or "exceeded" in error_lower:
-            error_content = "⚠️ API usage limit exceeded. Please check your provider settings."
+            error_content = "⚠️ API usage limit reached. Please check your provider settings."
         elif "timeout" in error_lower or "timed out" in error_lower:
             error_content = "[ERROR] Request timed out. Please try again."
         elif "connection" in error_lower or "network" in error_lower:
-            error_content = "[ERROR] Network connection error. Please check your internet."
+            error_content = "[ERROR] Network error. Please check your internet."
         
         await manager.send_personal(json.dumps({
             "type": "error",
